@@ -1,0 +1,15 @@
+{
+  "root": true,
+  "extends": ["react-app", "react-app/jest"],
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "eqeqeq": ["warn", "smart"]
+  },
+  "ignorePatterns": [
+    "build/",
+    "coverage/",
+    "src/blockchain/bsc/bytecode/**",
+    "src/blockchain/bsc/builds/**"
+  ]
+}
