@@ -144,4 +144,90 @@ describe("Launchpad deployer", () => {
     });
   });
 
+  describe("investing", () => {
+    it("accepts a contribution inside the window", async () => {
+      const { presale } = await deployPresale();
+      // The sale opens at the current block; move one second past it.
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.04"), {
+          value: ethers.utils.parseEther("0.04"),
+        });
+
+      expect(await presale.totalDeposits()).to.equal(
+        ethers.utils.parseEther("0.04")
+      );
+      expect(await presale.depositedAmount(user.address)).to.equal(
+        ethers.utils.parseEther("0.04")
+      );
+    });
+
+    it("records each contributor once", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.01"), {
+          value: ethers.utils.parseEther("0.01"),
+        });
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.01"), {
+          value: ethers.utils.parseEther("0.01"),
+        });
+
+      expect(await presale.contributorId()).to.equal(1);
+      expect(await presale.depositedAmount(user.address)).to.equal(
+        ethers.utils.parseEther("0.02")
+      );
+    });
+
+    it("refuses a contribution below the per-wallet minimum", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.0001"), {
+          value: ethers.utils.parseEther("0.0001"),
+        })
+      ).to.be.revertedWith("Launchpad: Min contribution not reached");
+    });
+
+    it("refuses a contribution beyond the hard cap", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.06"), {
+          value: ethers.utils.parseEther("0.06"),
+        })
+      ).to.be.revertedWith("Launchpad(Normal): Hardcap reached");
+    });
+
+    it("refuses a contribution once the window has closed", async () => {
+      const { presale, endAt } = await deployPresale();
+      await time.increaseTo(endAt + 1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.03"),
+        })
+      ).to.be.revertedWith("Launchpad: Sale is already closed");
+    });
+
+    it("refuses a payment that does not match the stated amount", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.01"),
+        })
+      ).to.be.revertedWith("Launchpad: Invalid payment amount");
+    });
+  });
+
 });
