@@ -14,6 +14,7 @@ let provider = null
 let signer = null
 let account = null
 let chainId = null
+let walletConnectProvider = null
 
 const listeners = new Set()
 
@@ -162,8 +163,81 @@ const addChain = async (network) => {
 export const isOnSupportedChain = (network = "testnet") =>
 	chainId === CHAIN_INFO[CHAIN_SUPPORT.bsc].chainId[network]
 
+
+/**
+ * Connect through WalletConnect rather than an injected extension.
+ *
+ * Loaded on demand: the provider bundle is large, and most visitors on a
+ * desktop browser never reach this path.
+ */
+export const connectWalletConnect = async () => {
+	const { default: WalletConnectProvider } = await import(
+		"@walletconnect/web3-provider"
+	)
+
+	const info = CHAIN_INFO[CHAIN_SUPPORT.bsc]
+	walletConnectProvider = new WalletConnectProvider({
+		rpc: {
+			[info.chainId.mainnet]: info.baseRpcNodeUrl.mainnet,
+			[info.chainId.testnet]: info.baseRpcNodeUrl.testnet,
+		},
+		qrcode: true,
+	})
+
+	await walletConnectProvider.enable()
+
+	provider = new ethers.providers.Web3Provider(walletConnectProvider, "any")
+	signer = provider.getSigner()
+	account = await signer.getAddress()
+	chainId = (await provider.getNetwork()).chainId
+
+	walletConnectProvider.on("accountsChanged", (accounts) => {
+		account = accounts[0] || null
+		notify()
+	})
+
+	walletConnectProvider.on("chainChanged", (nextChainId) => {
+		chainId = Number(nextChainId)
+		notify()
+	})
+
+	walletConnectProvider.on("disconnect", () => {
+		disconnectWalletConnect()
+	})
+
+	notify()
+	return { account, chainId }
+}
+
+/** Close the WalletConnect session and clear local state. */
+export const disconnectWalletConnect = async () => {
+	if (walletConnectProvider) {
+		try {
+			await walletConnectProvider.disconnect()
+		} catch (error) {
+			// A session that is already gone is not a failure.
+		}
+		walletConnectProvider = null
+	}
+
+	provider = null
+	signer = null
+	account = null
+	notify()
+}
+
+/** Which transport the current connection is using. */
+export const activeWalletType = () => {
+	if (walletConnectProvider) return "walletconnect"
+	if (account !== null) return "injected"
+	return null
+}
+
 export default {
 	connect,
+	connectWalletConnect,
+	disconnectWalletConnect,
+	activeWalletType,
 	disconnect,
 	reconnect,
 	subscribe,
