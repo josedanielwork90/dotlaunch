@@ -178,4 +178,66 @@ export const getMockMetadata = (uri) => {
   return MOCK_METADATA[key] || null;
 };
 
+
+/** Lock fixtures, shaped the way the locker page reads them. */
+export const MOCK_LOCKS = [
+  {
+    id: 0,
+    token: "0x55d398326f99059fF775485246999027B3197955",
+    owner: "0x1d1479C185d32EB90533a08b36B3CFa5F84A0E6B",
+    name: "Meta Inu",
+    symbol: "MENU",
+    decimals: 9,
+    amount: "250000000000000",
+    lockDate: base - 6 * DAY,
+    unlockDate: base + 180 * DAY,
+    isLp: false,
+    label: "Team allocation (6 months)",
+  },
+  {
+    id: 1,
+    token: "0x7EFaEf62fDdCCa950418312c6C91Aef321375A00",
+    owner: "0x1d1479C185d32EB90533a08b36B3CFa5F84A0E6B",
+    name: "MENU/BNB",
+    symbol: "MENU/BNB",
+    decimals: 18,
+    amount: "42000000000000000000",
+    lockDate: base - 6 * DAY,
+    unlockDate: base + 365 * DAY,
+    isLp: true,
+    label: "Listing liquidity (12 months)",
+  },
+  {
+    id: 2,
+    token: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    owner: "0x8aF0C4dE4dE5b7A1eBa53e6A0f7Cc1F3B2A9d0e4",
+    name: "Tokyo Millions",
+    symbol: "TOMI",
+    decimals: 18,
+    amount: "1000000000000000000000000",
+    lockDate: base - 20 * DAY,
+    unlockDate: base - 1 * DAY,
+    isLp: false,
+    label: "Advisor tranche (unlocked)",
+  },
+];
+
+/** Locks held by one address, newest first. */
+export const listMockLocks = (owner) => {
+  if (!owner) return MOCK_LOCKS;
+  return MOCK_LOCKS.filter(
+    (lock) => lock.owner.toLowerCase() === String(owner).toLowerCase()
+  );
+};
+
+/** Split locks into the two tabs the locker page renders. */
+export const partitionMockLocks = (locks = MOCK_LOCKS) => ({
+  token: locks.filter((lock) => !lock.isLp),
+  liquidity: locks.filter((lock) => lock.isLp),
+});
+
+/** Whether a lock has passed its unlock date. */
+export const isMockLockReleasable = (lock) =>
+  Number(lock.unlockDate) <= Date.now() && Number(lock.amount) > 0;
+
 export default MOCK_LAUNCHPADS;
