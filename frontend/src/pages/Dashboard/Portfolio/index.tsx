@@ -150,4 +150,48 @@ const Portfolio: React.FC = () => {
 	)
 }
 
+
+/** A lock this wallet owns, as the locker page models one. */
+export interface HeldLock {
+	id: number
+	token: string
+	symbol: string
+	decimals: number
+	amount: string
+	unlockDate: number
+	isLp: boolean
+}
+
+/**
+ * Split locks into what can be withdrawn now and what is still held.
+ *
+ * Uses the application clock rather than `Date.now()` so a seeded demo
+ * environment classifies locks against the same instant everything else on
+ * the page is rendered against.
+ */
+export const partitionLocks = (locks: HeldLock[], now: number) => ({
+	releasable: locks.filter(
+		(lock) => lock.unlockDate <= now && Number(lock.amount) > 0
+	),
+	held: locks.filter((lock) => lock.unlockDate > now && Number(lock.amount) > 0),
+	withdrawn: locks.filter((lock) => Number(lock.amount) === 0),
+})
+
+/** Days remaining until a lock opens, floored at zero. */
+export const daysUntilUnlock = (lock: HeldLock, now: number): number =>
+	Math.max(0, Math.ceil((lock.unlockDate - now) / (24 * 60 * 60 * 1000)))
+
+/** Total value held across a set of locks, per token symbol. */
+export const totalByToken = (locks: HeldLock[]): Record<string, number> => {
+	const totals: Record<string, number> = {}
+
+	for (const lock of locks) {
+		const key = lock.symbol || lock.token
+		const amount = Number(lock.amount) / 10 ** (lock.decimals || 18)
+		totals[key] = (totals[key] || 0) + amount
+	}
+
+	return totals
+}
+
 export default Portfolio

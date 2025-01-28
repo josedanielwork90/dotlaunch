@@ -62,6 +62,7 @@ const COLUMNS: Array<{ key: SortKey | null; label: string }> = [
 const LaunchPadTable: React.FC<Props> = ({ rows, loading = false }) => {
 	const [sortKey, setSortKey] = useState<SortKey>("start")
 	const [ascending, setAscending] = useState(false)
+	const [selected, setSelected] = useState<string[]>([])
 
 	const sorted = useMemo(() => {
 		const copy = [...rows]
@@ -143,6 +144,62 @@ const LaunchPadTable: React.FC<Props> = ({ rows, loading = false }) => {
 			</tbody>
 		</Table>
 	)
+}
+
+
+/**
+ * Serialise the current selection as CSV.
+ *
+ * Operators reconcile raises in a spreadsheet, and asking them to copy
+ * addresses out of the DOM by hand was the single most common support
+ * request this view attracted.
+ */
+export const toCsv = (rows: any[]): string => {
+	const header = [
+		"name",
+		"launchpad",
+		"token",
+		"raised",
+		"hardcap",
+		"start",
+		"end",
+	]
+
+	const escape = (value: unknown) => {
+		const text = value === undefined || value === null ? "" : String(value)
+		return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+	}
+
+	const lines = rows.map((row) =>
+		[
+			row.name,
+			row.launchpad,
+			row.tokenSale,
+			row.totalRaised,
+			row.hardcap,
+			new Date(Number(row.startTime)).toISOString(),
+			new Date(Number(row.endTime)).toISOString(),
+		]
+			.map(escape)
+			.join(",")
+	)
+
+	return [header.join(","), ...lines].join("\n")
+}
+
+/** Hand the CSV to the browser as a download. */
+export const downloadCsv = (rows: any[], filename = "presales.csv") => {
+	const blob = new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" })
+	const url = URL.createObjectURL(blob)
+
+	const anchor = document.createElement("a")
+	anchor.href = url
+	anchor.download = filename
+	document.body.appendChild(anchor)
+	anchor.click()
+	document.body.removeChild(anchor)
+
+	URL.revokeObjectURL(url)
 }
 
 export default LaunchPadTable
