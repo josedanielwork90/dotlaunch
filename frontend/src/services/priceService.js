@@ -79,6 +79,75 @@ export const formatUsd = (value) => {
 }
 
 /** Drop every cached quote. Used by tests and by the network switcher. */
-export const clearPriceCache = () => cache.clear()
+export const clearPriceCache = () => {
+	cache.clear()
+	seriesCache.clear()
+}
 
-export default { getPrice, toUsd, formatUsd, clearPriceCache }
+
+const CHART_API = "https://api.coingecko.com/api/v3/coins"
+const SERIES_TTL_MS = 15 * 60 * 1000
+
+const seriesCache = new Map()
+
+/**
+ * Daily closing prices for the last `days`.
+ *
+ * Used by the raise chart to plot a dollar line behind the native-coin bars.
+ * Cached far longer than the spot price: a daily series does not change
+ * minute to minute, and the endpoint is the most rate-limited of the two.
+ */
+export const getPriceSeries = async (symbol = "bnb", days = 30) => {
+	const id = SUPPORTED[symbol.toLowerCase()]
+	if (!id) return []
+
+	const key = `${id}:${days}`
+	const entry = seriesCache.get(key)
+	if (entry && Date.now() - entry.at < SERIES_TTL_MS) return entry.value
+
+	try {
+		const response = await axios.get(`${CHART_API}/${id}/market_chart`, {
+			params: { vs_currency: "usd", days, interval: "daily" },
+			timeout: 8000,
+		})
+
+		const points = (response.data?.prices || []).map(([at, price]) => ({
+			at,
+			price,
+		}))
+
+		seriesCache.set(key, { value: points, at: Date.now() })
+		return points
+	} catch (error) {
+		return []
+	}
+}
+
+/** Closing price nearest a given instant, or null when the series is empty. */
+export const priceAt = (series, timestamp) => {
+	if (!Array.isArray(series) || series.length === 0) return null
+
+	let closest = series[0]
+	let smallest = Math.abs(series[0].at - timestamp)
+
+	for (const point of series) {
+		const distance = Math.abs(point.at - timestamp)
+		if (distance < smallest) {
+			smallest = distance
+			closest = point
+		}
+	}
+
+	return closest.price
+}
+
+/** Percentage change across a series, or null when it cannot be computed. */
+export const changeOver = (series) => {
+	if (!Array.isArray(series) || series.length < 2) return null
+	const first = series[0].price
+	const last = series[series.length - 1].price
+	if (!first) return null
+	return ((last - first) / first) * 100
+}
+
+export default { getPrice, getPriceSeries, priceAt, changeOver, toUsd, formatUsd, clearPriceCache }
