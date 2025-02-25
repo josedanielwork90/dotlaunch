@@ -686,3 +686,103 @@ const createManageContract = async () => {
     return null;
   }
 };
+
+export const getUserBalance = async (userAddress) => {
+  try {
+    let receipt = await globalProvider.getBalance(userAddress);
+    return receipt;
+  } catch (error) {
+    console.log(error, "getUserBalance");
+  }
+};
+
+export const getStandardTokenBalance = async (tokenAddress, ownerAddress) => {
+  /*
+  if (!globalWalletAddr) {
+    globalWalletAddr = await getConnectedWallet();
+    if (!globalWalletAddr) {
+      await connectMetamask();
+    }
+  }
+  */
+
+  if (!globalProvider) globalProvider = web3Provider();
+  if (!globalProvider) return null;
+
+  /*
+  try {
+    accountbalance = await globalProvider.getBalance(globalWalletAddr);
+  } catch (error) {
+    console.error("Check account status");
+    return;
+  }
+
+
+  try {
+    await globalProvider.getCode(tokenAddress);
+  } catch (error) {
+    console.log("Invalid Token Address", error);
+    return;
+  }
+  */
+
+  const [ercContract /*, lockContract*/] = await Promise.all([
+    createStandardContract(tokenAddress),
+    // createLockContract(),
+  ]);
+
+  if (!ercContract) {
+    //|| !lockContract) {
+    return;
+  }
+
+  let calc_balance;
+  // let calc_lockallow, calc_lockedamount, calc_totalSupply;
+  // let calc_lockedamount, calc_totalSupply;
+  try {
+    const [
+      decimals,
+      totalSupply,
+      balance,
+      // available,
+      tsymbol,
+      tname,
+      // lockedamount,
+      // tunlocktime,
+    ] = await Promise.all([
+      ercContract.decimals(),
+      ercContract.totalSupply(),
+      // ercContract.balanceOf(globalWalletAddr),
+
+      // TODO: replace with globalWalletAddr and remove ownerAddress
+      ownerAddress ? ercContract.balanceOf(ownerAddress) : 0,
+
+      // ercContract.allowance(globalWalletAddr, BSC_CONTRACT_ADDRESS.TOKEN_LOCK),
+      ercContract.symbol(),
+      ercContract.name(),
+      // lockContract.GetBalance(tokenAddress),
+      // lockContract.GetUnlockTime(tokenAddress),
+    ]);
+
+    // const date = new Date(tunlocktime.toNumber() * 1000);
+
+    // calc_totalSupply = ethers.utils.formatUnits(totalSupply, decimals);
+    calc_balance = ethers.utils.formatUnits(balance, decimals);
+    // calc_lockallow = ethers.utils.formatUnits(available, decimals);
+    // calc_lockedamount = ethers.utils.formatUnits(lockedamount, decimals);
+
+    return {
+      calc_totalSupply: ethers.utils.formatUnits(totalSupply, decimals),
+      calc_balance,
+      // calc_lockallow,
+      // calc_lockedamount: ethers.utils.formatUnits(lockedamount, decimals),
+      // tunlocktime: date.toLocaleString("en-GB"),
+      tname,
+      tsymbol,
+      decimals,
+    };
+  } catch (error) {
+    console.log("Get Information Error", error);
+    return;
+  }
+};
