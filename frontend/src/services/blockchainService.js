@@ -434,3 +434,255 @@ export const getLaunchpadDetails = async ({ filter, page, size }) => {
     return {};
   }
 };
+
+export const checkTokenAllowance = async (tokenAddress, _operator) => {
+  try {
+    if (tokenAddress === process.env.REACT_APP_BSC_CONTRACT_ADDR_TOKEN_BNB)
+      return true;
+    let operator = "";
+    switch (_operator) {
+      case "DEPLOYER":
+        operator = BSC_CONTRACT_ADDRESS.DEPLOYER;
+        break;
+      case "LOCKER":
+        operator = BSC_CONTRACT_ADDRESS.TOKEN_LOCK;
+        break;
+      case "AIRDROP":
+        operator = BSC_CONTRACT_ADDRESS.AIRDROP;
+        break;
+      case "MULTISEND_TOKEN":
+        operator = BSC_CONTRACT_ADDRESS.TOKEN_MULTISEND;
+        break;
+      default:
+        operator = _operator;
+        break;
+    }
+    let tokenInstance = getTokenInstance(tokenAddress);
+
+    let receipt = await tokenInstance.allowance(globalWalletAddr, operator);
+
+    return receipt > 0;
+  } catch (error) {
+    console.error(error, "checkAllowance");
+  }
+};
+
+export const approveTokenDeployer = async (
+  tokenAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let instance = await getTokenContractInstance(
+      tokenAddress,
+      walletType,
+      walletProvider
+    );
+
+    let operator = BSC_CONTRACT_ADDRESS.DEPLOYER;
+
+    let tx = await instance.approve(
+      operator,
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      { gasLimit: 100000 }
+    );
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error, "approveDeployer");
+  }
+};
+
+export const approveTokenLaunchpad = async (
+  tokenAddress,
+  launchpadAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let instance = await getTokenContractInstance(
+      tokenAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await instance.approve(
+      launchpadAddress,
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      { gasLimit: 100000 }
+    );
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error, "approveLaunchpad");
+  }
+};
+
+/**
+ * Re-establish a previous session without prompting.
+ *
+ * The old implementation referenced a bare `ethereum` global, which threw a
+ * ReferenceError in any browser without an extension - before the user could
+ * even reach the connect dialog.
+ */
+export const getConnectedWallet = async () => {
+  try {
+    globalWalletAddr = await walletManager.restore();
+    return globalWalletAddr;
+  } catch (error) {
+    return "";
+  }
+};
+
+/**
+ * Connect a wallet extension.
+ *
+ * Delegates to the wallet manager, which also switches the wallet to the
+ * configured chain - previously this demanded BSC testnet unconditionally,
+ * so the app could not be used on any other network.
+ */
+export const connectMetamask = async () => {
+  try {
+    globalProvider = null;
+    globalWalletAddr = await walletManager.connect("INJECTED");
+    return globalWalletAddr;
+  } catch (error) {
+    console.error(error);
+    return "";
+  }
+};
+
+/** Connect the built-in demo wallet backed by the local development chain. */
+export const connectDemoWallet = async (address) => {
+  try {
+    globalProvider = null;
+    globalWalletAddr = await walletManager.connect("DEMO", { address });
+    return globalWalletAddr;
+  } catch (error) {
+    console.error(error);
+    return "";
+  }
+};
+
+// Extension account/chain switches invalidate the cached provider. The demo
+// wallet emits accountsChanged too, but is handled without a reload so
+// switching demo accounts stays instant.
+const injectedForEvents =
+  typeof window !== "undefined" && window.ethereum ? window.ethereum : null;
+
+if (injectedForEvents && typeof injectedForEvents.on === "function") {
+  injectedForEvents.on("accountsChanged", () => {
+    globalProvider = null;
+    window.location.reload();
+  });
+
+  injectedForEvents.on("chainChanged", () => {
+    globalProvider = null;
+    window.location.reload();
+  });
+}
+
+walletManager.subscribe((address) => {
+  globalProvider = null;
+  globalWalletAddr = address;
+});
+
+const createStandardContract = async (addr) => {
+  let tokenContract;
+
+  if (!globalWalletAddr) {
+    globalWalletAddr = await getConnectedWallet();
+    if (!globalWalletAddr) {
+      await connectMetamask();
+    }
+  }
+
+  if (!globalProvider) globalProvider = web3Provider();
+  if (!globalProvider) return null;
+
+  tokenContract = connectContract(StandardTokenAbi, addr);
+
+  if (!tokenContract) {
+    return null;
+  }
+
+  let signer = await globalProvider.getSigner();
+
+  if (signer) {
+    try {
+      tokenContract = await tokenContract.connect(signer);
+    } catch (error) {
+      console.error("Token lock connect error");
+    }
+  } else {
+    return null;
+  }
+
+  return tokenContract;
+};
+
+export const isValidAddress = (addr) => ethers.utils.isAddress(addr);
+
+const connectContract = (tokenabi, tokenAddr, signer) => {
+  try {
+    if (!globalProvider) globalProvider = web3Provider();
+    if (!globalProvider) return null;
+    return new ethers.Contract(tokenAddr, tokenabi, signer || globalProvider);
+  } catch (error) {
+    console.log(error);
+    return null;
+  }
+};
+
+const createLockContract = async () => {
+  let tokenContract;
+
+  if (!globalProvider) {
+    return null;
+  }
+
+  tokenContract = connectContract(
+    TokenLockAbi,
+    BSC_CONTRACT_ADDRESS.TOKEN_LOCK
+  );
+
+  if (!tokenContract) {
+    return null;
+  }
+
+  return tokenContract;
+};
+
+const createManageContract = async () => {
+  let manageContract;
+
+  if (!globalProvider || !globalWalletAddr) {
+    return null;
+  }
+
+  manageContract = await connectContract(
+    ManageTokenAbi,
+    BSC_CONTRACT_ADDRESS.TOKEN_MANAGE
+  );
+
+  if (!manageContract) {
+    return null;
+  }
+
+  let signer = await globalProvider.getSigner();
+
+  if (signer) {
+    try {
+      manageContract = await manageContract.connect(signer);
+      return manageContract;
+    } catch (error) {
+      console.log(error, "createManageContract");
+    }
+  } else {
+    return null;
+  }
+};
