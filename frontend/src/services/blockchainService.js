@@ -786,3 +786,105 @@ export const getStandardTokenBalance = async (tokenAddress, ownerAddress) => {
     return;
   }
 };
+
+/** @deprecated Use disconnectWallet, which handles every wallet type. */
+export const disconnectMetamask = () => {
+  walletManager.disconnect();
+  globalProvider = null;
+  globalWalletAddr = "";
+};
+
+/**
+ * Connect through WalletConnect.
+ *
+ * Previously this built a `new Web3(provider)` - but Web3 was never imported,
+ * so the function threw a ReferenceError on every call, and it is wired
+ * straight to a menu item. It also hardcoded BSC testnet, ignoring the
+ * configured chain.
+ *
+ * WalletConnect reaches its relay over the internet, so it cannot work in the
+ * offline demo environment; that case is reported rather than left to fail
+ * with a network timeout.
+ */
+export const connectWalletConnect = async () => {
+  if (runtimeConfig.demoMode) {
+    throw new Error(
+      "WalletConnect needs internet access and is unavailable in demo mode. " +
+        "Use the demo wallet instead."
+    );
+  }
+
+  const provider = new WalletConnectProvider({
+    rpc: { [runtimeConfig.chainId]: runtimeConfig.chainRpcUrl },
+    chainId: runtimeConfig.chainId,
+    infuraId: null,
+  });
+
+  await provider.enable();
+
+  globalProvider = null;
+  globalWalletAddr = await walletManager.connect("WALLET_CONNECT", { provider });
+  return globalWalletAddr;
+};
+
+/**
+ * Disconnect whichever wallet is active.
+ *
+ * The previous implementation referenced two names that were never defined -
+ * `walletType`, which was not a parameter, and `store`, which was never
+ * imported - so it threw a ReferenceError instead of disconnecting.
+ */
+export const disconnectWallet = async () => {
+  const provider = walletManager.provider;
+
+  if (
+    walletManager.type === "WALLET_CONNECT" &&
+    provider &&
+    typeof provider.disconnect === "function"
+  ) {
+    try {
+      await provider.disconnect();
+    } catch (error) {
+      console.warn("WalletConnect session could not be closed cleanly");
+    }
+  }
+
+  walletManager.disconnect();
+  globalProvider = null;
+  globalWalletAddr = "";
+};
+
+const getSigner = async (walletType, walletProvider) => {
+  const provider = web3Provider(walletProvider);
+  if (!provider) {
+    throw new Error(
+      "No wallet is connected. Connect a wallet before sending a transaction."
+    );
+  }
+  return provider.getSigner(0);
+};
+
+export const getTokenAddresses = async () => {
+  if (!globalWalletAddr) {
+    console.error("Wallet is unconnected");
+    return;
+  }
+
+  const manage_contract = await createManageContract();
+
+  if (!manage_contract) {
+    return;
+  }
+
+  try {
+    const tokenlists = await manage_contract.getCreatedToken(globalWalletAddr);
+    const tokenDetails = await Promise.all([
+      tokenlists.map(getStandardTokenBalance),
+    ]);
+
+    return tokenDetails;
+  } catch (error) {
+    console.log(error);
+    return [];
+  }
+};
