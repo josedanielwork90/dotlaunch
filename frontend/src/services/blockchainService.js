@@ -888,3 +888,242 @@ export const getTokenAddresses = async () => {
     return [];
   }
 };
+
+export const deployToken = async (type, params, walletType, walletProvider) => {
+  if (type === undefined) {
+    type = "Standard";
+  }
+  try {
+    const signer = await getSigner(walletType, walletProvider);
+    let abi;
+    let bytecode;
+    let args;
+    let {
+      name,
+      symbol,
+      decimals,
+      totalSupply,
+      // charityAddress,
+      // taxFeeBps,
+      // liquidityFeeBps,
+      // charityFeeBps,
+    } = params;
+
+    if (type === "Standard") {
+      abi = StandardTokenAbi;
+      bytecode = StandardTokenByteCode;
+      args = [
+        name,
+        symbol,
+        decimals,
+        ethers.utils.parseUnits(totalSupply, decimals),
+      ];
+    } else if (type === "Liquidity") {
+      abi = LiquidityTokenAbi;
+      bytecode = LiquidityTokenByteCode;
+      let { charityAddress, taxFeeBps, liquidityFeeBps, charityFeeBps } =
+        params;
+      args = [
+        name,
+        symbol,
+        ethers.utils.parseUnits(totalSupply, 18),
+        "0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3",
+        charityAddress,
+        ethers.utils.parseUnits(taxFeeBps, 2),
+        ethers.utils.parseUnits(liquidityFeeBps, 2),
+        ethers.utils.parseUnits(charityFeeBps, 2),
+      ];
+    } else if (type === "Baby") {
+      abi = BabyTokenAbi;
+      bytecode = BabyTokenByteCode;
+      let {
+        rewardAddress,
+        marketingAddress,
+        minimumTokenBalance,
+        rewardsFee,
+        liquidityFee,
+        marketingFee,
+      } = params;
+      args = [
+        name,
+        symbol,
+        ethers.utils.parseUnits(totalSupply, 18),
+        [
+          rewardAddress,
+          "0xd99d1c33f9fc3444f8101754abc46c52416550d1",
+          marketingAddress,
+          "0x6d78a4a7f840c09fdf5af422a4fbdfa99e250bee",
+        ],
+        [rewardsFee, liquidityFee, marketingFee],
+        minimumTokenBalance,
+      ];
+    } else if (type === "Buyback") {
+      abi = BuyBackBabyTokenAbi;
+      bytecode = BuyBackBabyTokenByteCode;
+      let {
+        liquidityFee,
+        buybackFee,
+        reflectionFee,
+        marketingFee,
+        rewardAddress,
+      } = params;
+
+      liquidityFee = ethers.utils.parseUnits(liquidityFee, 2);
+      buybackFee = ethers.utils.parseUnits(buybackFee, 2);
+      reflectionFee = ethers.utils.parseUnits(reflectionFee, 2);
+      marketingFee = ethers.utils.parseUnits(marketingFee, 2);
+      args = [
+        name,
+        symbol,
+        ethers.utils.parseUnits(totalSupply, 18),
+        rewardAddress,
+        "0xd99d1c33f9fc3444f8101754abc46c52416550d1",
+        [liquidityFee, buybackFee, reflectionFee, marketingFee, 10000],
+      ];
+    }
+
+    // The factory we use for deploying contracts
+    const factory = new ethers.ContractFactory(abi, bytecode, signer);
+
+    const value = ethers.utils.parseUnits("0.01", "ether");
+
+    // Deploy an instance of the contract
+    const contract = await factory.deploy(
+      ...args,
+      "0x153B202F6C6e570f13C27371CdA6Ae2c8768Dca6",
+      value,
+      { value }
+    );
+
+    const receipt = await contract.deployTransaction.wait();
+    console.log("finish", receipt);
+
+    return receipt;
+  } catch (error) {
+    console.log("Deploy token error", error);
+  }
+};
+
+const deployerContractInstance = async (walletType, walletProvider) => {
+  const signer = await getSigner(walletType, walletProvider);
+
+  return new ethers.Contract(
+    BSC_CONTRACT_ADDRESS.DEPLOYER,
+    DeployerAbi,
+    signer
+  );
+};
+
+const launchpadContractInstance = async (
+  launchpadAddr,
+  walletType,
+  walletProvider
+) => {
+  const signer = await getSigner(walletType, walletProvider);
+
+  return new ethers.Contract(launchpadAddr, LaunchPadAbi, signer);
+};
+
+export const signIn = async (walletType, walletProvider) => {
+  try {
+    const message = makeString(50)
+    const signer = await getSigner(walletType, walletProvider);
+    const signature = await signer.signMessage(message)
+    return {
+      address: await signer.provider.getSigner(0).getAddress(),
+      network: signer.provider.network.chainId.toString(),
+      nonce: message,
+      signature
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+export const createTokenLaunchpad = async (
+  launchpadDetails,
+  walletType,
+  walletProvider
+) => {
+  try {
+    const instance = await deployerContractInstance(walletType, walletProvider);
+
+    const {
+      presaleRate,
+      listingRate,
+      softCap,
+      hardCap,
+      minBuy,
+      maxBuy,
+      startDate,
+      endDate,
+      // tokenPaymentFee,
+      // tokenSaleFee,
+      // liquidityPerc,
+      claimDate,
+      tokenDecimals,
+      feeOption,
+      remainingTokenOption,
+      infoUrl,
+      tokenSaleAddr,
+      tokenPaymentAddr,
+      launchpadType,
+      totalSellingAmount,
+      // refundWhenFinished,
+    } = launchpadDetails;
+
+    const _prices =
+      launchpadType === 0
+        ? [Number(presaleRate), Number(listingRate || 0)]
+        : [totalSellingAmount / Number(softCap), 0];
+
+    const _caps =
+      launchpadType === 0
+        ? [
+            ethers.utils.parseUnits(softCap, tokenDecimals || 18),
+            ethers.utils.parseUnits(hardCap, tokenDecimals || 18),
+          ]
+        : [0, ethers.utils.parseUnits(softCap, tokenDecimals || 18)];
+
+    const _limits =
+      launchpadType === 0
+        ? [
+            ethers.utils.parseUnits(minBuy, "ether"),
+            ethers.utils.parseUnits(maxBuy, "ether"),
+          ]
+        : [0, 0];
+
+    const _times = [
+      getUTCTimestamp(startDate),
+      getUTCTimestamp(endDate),
+      getUTCTimestamp(claimDate),
+    ];
+
+    const _adminFee = feeOption === "2" ? [200, 200] : [0, 500];
+    const _addr = [tokenSaleAddr, tokenPaymentAddr];
+    const refundWhenFinished = remainingTokenOption === "2" ? false : true;
+    console.log(
+      {
+        _caps,
+        _times,
+        _prices,
+        _limits,
+        _adminFee,
+        _addr,
+        infoUrl,
+        refundWhenFinished,
+        launchpadType,
+      },
+      "tokens needed"
+    );
+
+    const value = ethers.utils.parseUnits("0.01", "ether");
+
+    const tx = await instance.createLaunchpad(
+      _caps,
+      _times,
+      _prices,
+      _limits,
+      _adminFee,
+      _addr,
+      infoUrl,
