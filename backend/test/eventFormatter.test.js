@@ -1,6 +1,6 @@
 const { BigNumber } = require("ethers");
 
-const helpers = require("../src/loaders/bscEventListener/helpers");
+const formatter = require("../src/loaders/bscEventListener/helpers/transactionLogFormatter");
 
 /**
  * Log formatting.
@@ -35,34 +35,34 @@ const deployedLog = (overrides = {}) => ({
 
 describe("formatLaunchpadCreated", () => {
   it("carries the launchpad address through", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     expect(formatted.launchpad).toBe("0x00000000000000000000000000000000000000a1");
   });
 
   it("converts chain seconds to milliseconds", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     expect(formatted.startTime).toBe(1_700_000_000_000);
     expect(formatted.endTime).toBe(1_700_086_400_000);
   });
 
   it("stores the sale type as a number", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     expect(formatted.launchPadType).toBe(0);
     expect(typeof formatted.launchPadType).toBe("number");
   });
 
   it("stores the admin fee as a string, so precision survives", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     expect(formatted.adminTokenSaleFee).toBe("5000");
   });
 
   it("keeps the transaction hash", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     expect(formatted.transactionHash).toBe("0xdeadbeef");
   });
 
   it("produces only JSON-safe values", () => {
-    const formatted = helpers.formatLaunchpadCreated(deployedLog());
+    const formatted = formatter.formatLaunchpadCreated(deployedLog());
     for (const value of Object.values(formatted)) {
       expect(["string", "number", "boolean"]).toContain(typeof value);
     }
@@ -84,13 +84,13 @@ describe("formatLaunchpadParameter", () => {
   };
 
   it("keeps wei amounts as strings rather than numbers", () => {
-    const formatted = helpers.formatLaunchpadParameter(parameterLog);
+    const formatted = formatter.formatLaunchpadParameter(parameterLog);
     expect(formatted.softcap).toBe("20000000000000000");
     expect(typeof formatted.hardcap).toBe("string");
   });
 
   it("does not lose precision on a hardcap beyond MAX_SAFE_INTEGER", () => {
-    const formatted = helpers.formatLaunchpadParameter({
+    const formatted = formatter.formatLaunchpadParameter({
       ...parameterLog,
       args: { ...parameterLog.args, hardcap: bn("123456789012345678901234") },
     });
@@ -98,7 +98,7 @@ describe("formatLaunchpadParameter", () => {
   });
 
   it("carries both rates", () => {
-    const formatted = helpers.formatLaunchpadParameter(parameterLog);
+    const formatted = formatter.formatLaunchpadParameter(parameterLog);
     expect(formatted.presaleRate).toBe("100000");
     expect(formatted.listingRate).toBe("90000");
   });
@@ -106,7 +106,7 @@ describe("formatLaunchpadParameter", () => {
 
 describe("formatLaunchpadStateChanged", () => {
   it("converts the state to a number", () => {
-    const formatted = helpers.formatLaunchpadStateChanged({
+    const formatted = formatter.formatLaunchpadStateChanged({
       transactionHash: "0xabc",
       args: {
         launchpad: "0x00000000000000000000000000000000000000a1",
@@ -114,5 +114,66 @@ describe("formatLaunchpadStateChanged", () => {
       },
     });
     expect(formatted.status).toBe(1);
+  });
+});
+
+describe("formatLaunchpadRaisedChanged", () => {
+  const raisedLog = {
+    transactionHash: "0xraised",
+    args: {
+      launchpad: "0x00000000000000000000000000000000000000a1",
+      newRaisedAmount: bn("12000000000000000"),
+      newNeedToRaised: bn("38000000000000000"),
+    },
+  };
+
+  it("records the raised total as a string", () => {
+    const formatted = formatter.formatLaunchpadRaisedChanged(raisedLog);
+    expect(formatted.totalRaised).toBe("12000000000000000");
+  });
+
+  /**
+   * The event parameter is `newNeedToRaised`. Reading it as
+   * `totalNeedToRaised` does not throw - it stores the literal string
+   * "undefined" against every presale, which then renders as a broken
+   * progress bar rather than as an error anyone would notice.
+   */
+  it("reads the amount still needed under the name the event uses", () => {
+    const formatted = formatter.formatLaunchpadRaisedChanged(raisedLog);
+    expect(formatted.totalNeedToRaised).toBe("38000000000000000");
+    expect(formatted.totalNeedToRaised).not.toBe("undefined");
+  });
+
+  it("keeps both totals free of BigNumber objects", () => {
+    const formatted = formatter.formatLaunchpadRaisedChanged(raisedLog);
+    expect(typeof formatted.totalRaised).toBe("string");
+    expect(typeof formatted.totalNeedToRaised).toBe("string");
+  });
+});
+
+describe("formatLaunchpadActionChanged", () => {
+  it("converts the whitelist deadline to milliseconds", () => {
+    const formatted = formatter.formatLaunchpadActionChanged({
+      args: {
+        launchpad: "0x00000000000000000000000000000000000000a1",
+        usingWhitelist: true,
+        endOfWhitelistTime: bn(1_700_000_000),
+      },
+    });
+
+    expect(formatted.usingWhitelist).toBe(true);
+    expect(formatted.endOfWhitelistTime).toBe(1_700_000_000_000);
+  });
+
+  it("reads the flag as a boolean, not a string", () => {
+    const formatted = formatter.formatLaunchpadActionChanged({
+      args: {
+        launchpad: "0x00000000000000000000000000000000000000a1",
+        usingWhitelist: false,
+        endOfWhitelistTime: bn(0),
+      },
+    });
+
+    expect(formatted.usingWhitelist).toBe(false);
   });
 });
