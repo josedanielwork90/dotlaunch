@@ -3,8 +3,12 @@
  *
  * Every value is sourced from the environment so that the same image can run
  * against a local chain, a testnet or production without a rebuild. The
- * defaults below are the local development values and are safe to commit.
+ * defaults below are deliberately the *local development* values used by
+ * docker-compose - they are not secrets and are safe to commit.
  */
+
+const fs = require("fs");
+const path = require("path");
 
 const requireInProduction = (name, value) => {
   if (process.env.NODE_ENV === "production" && !process.env[name]) {
@@ -37,6 +41,31 @@ const str = (name, fallback) => {
   return raw === undefined || raw === "" ? fallback : raw;
 };
 
+/**
+ * Addresses and start block recorded by the contract deploy script.
+ *
+ * docker-compose mounts the deployments volume read-only into the API, so
+ * the API can discover where the contracts live and which block they went
+ * live in without those values having to be duplicated into the environment
+ * by hand. Environment variables still win when set.
+ */
+const deploymentRecord = (() => {
+  const dir = str("DEPLOYMENTS_DIR", "./deployments");
+  const name = str("DEPLOYMENT_NAME", "localhost");
+  const file = path.join(dir, `${name}.json`);
+
+  try {
+    if (!fs.existsSync(file)) return null;
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (error) {
+    return null;
+  }
+})();
+
+/** Deployed address for `key`, preferring the environment over the record. */
+const contractAddress = (envName, key) =>
+  str(envName, deploymentRecord?.contracts?.[key] || "");
+
 const config = Object.freeze({
   env: str("NODE_ENV", "development"),
   port: int("PORT", 8888),
@@ -59,19 +88,23 @@ const config = Object.freeze({
   },
 
   chain: {
-    rpcUrl: str(
-      "CHAIN_RPC_URL",
-      "https://data-seed-prebsc-1-s1.binance.org:8545/"
-    ),
-    chainId: int("CHAIN_ID", 97),
-    name: str("CHAIN_NAME", "bsc-testnet"),
+    // Local anvil node by default; override for BSC testnet/mainnet.
+    rpcUrl: str("CHAIN_RPC_URL", "http://127.0.0.1:8545"),
+    chainId: int("CHAIN_ID", 31337),
+    name: str("CHAIN_NAME", "localhost"),
+    // Block confirmations to wait before treating a log as final. Local
+    // chains mine instantly, so zero is correct there.
+    confirmations: int("CHAIN_CONFIRMATIONS", 0),
   },
 
   contracts: {
-    launchpadDeployer: str("CONTRACT_LAUNCHPAD_DEPLOYER", ""),
-    tokenLock: str("CONTRACT_TOKEN_LOCK", ""),
-    tokenManage: str("CONTRACT_TOKEN_MANAGE", ""),
-    multisend: str("CONTRACT_MULTISEND", ""),
+    launchpadDeployer: contractAddress(
+      "CONTRACT_LAUNCHPAD_DEPLOYER",
+      "launchpadDeployer"
+    ),
+    tokenLock: contractAddress("CONTRACT_TOKEN_LOCK", "tokenLock"),
+    tokenManage: contractAddress("CONTRACT_TOKEN_MANAGE", "manageToken"),
+    multisend: contractAddress("CONTRACT_MULTISEND", "bulkTransfer"),
   },
 
   eventListener: {
@@ -81,11 +114,24 @@ const config = Object.freeze({
     timeoutSeconds: int("EVENT_LISTENER_TIMEOUT_SEC", 90),
     jobName: str("EVENT_LISTENER_JOB", "Event1_0"),
     reduceRange: int("EVENT_LISTENER_REDUCE_RANGE", 5),
+    // Defaults to the block the contracts were deployed in, so the listener
+    // replays from first principles on a cold start instead of guessing at a
+    // recent window and silently missing earlier launches.
+    startBlock: int(
+      "EVENT_LISTENER_START_BLOCK",
+      deploymentRecord?.startBlock || 0
+    ),
   },
 
-  ipfs: {
+
+  storage: {
+    // "local" keeps uploads on disk so the stack runs with no internet
+    // access; "pinata" pins to IPFS and requires PINATA_JWT.
+    driver: str("STORAGE_DRIVER", "local"),
+    localDir: str("STORAGE_LOCAL_DIR", "./.storage"),
+    publicBaseUrl: str("STORAGE_PUBLIC_BASE_URL", "http://localhost:8888/api/v1/storage"),
     pinataJwt: str("PINATA_JWT", ""),
-    gatewayUrl: str("PINATA_GATEWAY_URL", "https://gateway.pinata.cloud/ipfs/"),
+    pinataGateway: str("PINATA_GATEWAY_URL", "https://gateway.pinata.cloud/ipfs/"),
   },
 });
 
