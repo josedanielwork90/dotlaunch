@@ -1295,3 +1295,117 @@ export const unlockToken = async (id, walletType, walletProvider) => {
     console.log(error, "unlock");
   }
 };
+
+export const multiSendToken = async (
+  data,
+  tokenAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let signer = await getSigner(walletType, walletProvider);
+
+    let multiSendInstance = connectContract(
+      MultiSendTokenAbi,
+      BSC_CONTRACT_ADDRESS.TOKEN_MULTISEND,
+      signer
+    );
+
+    const tx = await multiSendInstance.bulkTransfer(data, tokenAddress);
+
+    return tx;
+  } catch (error) {
+    console.log(error, "multisend");
+  }
+};
+
+export const enableWhitelist = async (
+  launchpadAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let contractInstance = await launchpadContractInstance(
+      launchpadAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await contractInstance.enableWhitelist();
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const disableWhitelist = async (
+  launchpadAddress,
+  time,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let contractInstance = await launchpadContractInstance(
+      launchpadAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await contractInstance.disableWhitelist(time);
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const addUserInWhitelist = async (
+  users,
+  launchpadAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let contractInstance = await launchpadContractInstance(
+      launchpadAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await contractInstance.grantWhitelist(users);
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const removeUserInWhitelist = async (
+  users,
+  launchpadAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let contractInstance = await launchpadContractInstance(
+      launchpadAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await contractInstance.revokeWhitelist(users);
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error);
+  }
+};
