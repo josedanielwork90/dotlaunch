@@ -1127,3 +1127,171 @@ export const createTokenLaunchpad = async (
       _adminFee,
       _addr,
       infoUrl,
+      // tokenSaleAddr,
+      // tokenPaymentAddr, // BNB by default
+      refundWhenFinished,
+      launchpadType,
+      { value }
+    );
+
+    const receipt = await tx.wait();
+    return receipt;
+  } catch (error) {
+    console.error(error, "createLaunchpad");
+  }
+};
+
+export const approveTokenLocker = async (
+  tokenAddress,
+  walletType,
+  walletProvider
+) => {
+  try {
+    let instance = await getTokenContractInstance(
+      tokenAddress,
+      walletType,
+      walletProvider
+    );
+
+    let tx = await instance.approve(
+      BSC_CONTRACT_ADDRESS.TOKEN_LOCK,
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      { gasLimit: 100000 }
+    );
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error, "approveLocker");
+  }
+};
+
+export const approveTokenMultiSend = async (
+  tokenAddress,
+  approveAmount,
+  walletType,
+  walletProvider
+) => {
+  try {
+    const instance = await getTokenContractInstance(
+      tokenAddress,
+      walletType,
+      walletProvider
+    );
+
+    const tx = await instance.approve(
+      BSC_CONTRACT_ADDRESS.TOKEN_MULTISEND,
+      approveAmount,
+      { gasLimit: 100000 }
+    );
+
+    const receipt = await tx.wait();
+    return true;
+  } catch (error) {
+    console.log(error, "approveMultiSend");
+    return false;
+  }
+};
+
+export const createTokenLock = async (params, walletType, walletProvider) => {
+  try {
+    let signer = await getSigner(walletType, walletProvider);
+
+    let lockerInstance = connectContract(
+      TokenLockAbi,
+      BSC_CONTRACT_ADDRESS.TOKEN_LOCK,
+      signer
+    );
+    console.log("lockerInstance", ...params, globalWalletAddr);
+    const value = ethers.utils.parseUnits("0.01", "ether");
+    let tx = await lockerInstance.lock(globalWalletAddr, ...params, {
+      value,
+    });
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+export const getNormalTokensLock = async (tokenAddr) => {
+  try {
+    let lockerInstance = connectContract(
+      TokenLockAbi,
+      BSC_CONTRACT_ADDRESS.TOKEN_LOCK,
+      globalProvider
+    );
+    let count = await lockerInstance.allNormalTokenLockedCount();
+
+    let lockData = await lockerInstance.getCumulativeNormalTokenLockInfo(
+      "0",
+      count
+    );
+
+    if (tokenAddr) {
+      lockData = lockData.filter((tken) => tken.token === tokenAddr);
+    }
+
+    const tokenDetails = await Promise.all(
+      lockData.map((dt) => getTokenLockRecord(dt.token))
+    );
+
+    return tokenDetails.map((token, index) => ({
+      decimal: lockData[index].decimals,
+      name: lockData[index].name,
+      symbol: lockData[index].symbol,
+      totalLockedAmount: getTokenNumberFromBN(
+        lockData[index].amount,
+        lockData[index].decimals
+      ),
+      lockedData: token.map((tk) => ({
+        id: getNumberFromBN(tk.id),
+        lockedAmount: getTokenNumberFromBN(tk.amount, lockData[index].decimals),
+        owner: tk.owner,
+        unlockDate: getNumberFromBN(tk.unlockDate),
+      })),
+      lockDate: getNumberFromBN(token[0].lockDate),
+      token: lockData[index].token,
+    }));
+  } catch (error) {
+    console.log(error, "getNormalTokensLock");
+  }
+};
+
+export const getTokenLockRecord = async (tokenAddress) => {
+  try {
+    let lockerInstance = connectContract(
+      TokenLockAbi,
+      BSC_CONTRACT_ADDRESS.TOKEN_LOCK,
+      globalProvider
+    );
+    let count = await lockerInstance.totalLockCountForToken(tokenAddress);
+    let data = await lockerInstance.getLocksForToken(tokenAddress, "0", count);
+    return data;
+  } catch (error) {
+    console.log(error, "getTokenLockRecord");
+  }
+};
+
+export const unlockToken = async (id, walletType, walletProvider) => {
+  try {
+    let signer = await getSigner(walletType, walletProvider);
+
+    let lockerInstance = connectContract(
+      TokenLockAbi,
+      BSC_CONTRACT_ADDRESS.TOKEN_LOCK,
+      signer
+    );
+
+    let tx = await lockerInstance.unlock(id);
+
+    let receipt = await tx.wait();
+
+    return receipt;
+  } catch (error) {
+    console.log(error, "unlock");
+  }
+};
