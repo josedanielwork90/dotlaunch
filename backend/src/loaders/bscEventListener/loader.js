@@ -1,3 +1,4 @@
+const http = require("http");
 const loggerContainer = require("../loggerContainer");
 const { CronJob } = require("cron");
 const EventEmitter = require("events");
@@ -6,6 +7,54 @@ const { BSC_EVENT_NAME } = require("../../helpers/constants");
 const config = require("../../config");
 const { queueList: bullQueueList } = require("../queue");
 const logger = loggerContainer.get("EVENT_LISTENER_WORKER");
+
+const HEALTHCHECK_TIMEDIFF_TOLERANCE = 5 * 60000;
+const HEALTHCHECK_HOST = "localhost";
+const HEALTHCHECK_PORT = 8000;
+
+/**
+ * Liveness endpoint for the listener itself, reporting whether it has ticked
+ * recently.
+ *
+ * Created on demand rather than at import time. Binding a socket as a side
+ * effect of `require` meant anything that merely imported this module - a
+ * test, a maintenance script - started a listening server and, on a second
+ * import, failed with EADDRINUSE.
+ */
+let healthcheckServer = null;
+
+const startHealthcheckServer = () => {
+  if (healthcheckServer) return healthcheckServer;
+
+  healthcheckServer = http.createServer(async (req, res) => {
+    const listenerTimestamp = await EventCronServices.getListenerTimestamp();
+    const isHealthy = listenerTimestamp
+      ? new Date().getTime() - listenerTimestamp.getTime() <
+        HEALTHCHECK_TIMEDIFF_TOLERANCE
+      : false;
+    res.writeHead(isHealthy ? 200 : 404);
+    res.end();
+  });
+
+  healthcheckServer.on("error", (error) => {
+    logger.error(`Healthcheck server failed to bind: ${error.message}`);
+  });
+
+  healthcheckServer.listen(HEALTHCHECK_PORT, HEALTHCHECK_HOST, () => {
+    logger.info(
+      `HTTP Healthcheck Server is running at ${HEALTHCHECK_HOST}:${HEALTHCHECK_PORT}`
+    );
+  });
+
+  return healthcheckServer;
+};
+
+/** Stop the listener's healthcheck server. Used on shutdown and by tests. */
+const stopHealthcheckServer = () => {
+  if (!healthcheckServer) return;
+  healthcheckServer.close();
+  healthcheckServer = null;
+};
 
 const CRONJOB_TIMEOUT_BYSEC = config.eventListener.timeoutSeconds || 60;
 const CRON_PATTERN = config.eventListener.cronPattern || "*/30 * * * * *";
@@ -152,6 +201,7 @@ const onStopTask = () => {
 
 const eventLoader = () => {
   logger.info("Event Listener service started");
+  startHealthcheckServer();
   logger.info(`Chain RPC endpoint: ${config.chain.rpcUrl}`);
   logger.info(
     `ADDRESS_LAUNCHPAD_DEPLOYER: ${config.contracts.launchpadDeployer}`
@@ -193,3 +243,4 @@ const eventLoader = () => {
 };
 
 module.exports = eventLoader;
+module.exports.stopHealthcheckServer = stopHealthcheckServer;

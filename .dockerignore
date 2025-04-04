@@ -1,0 +1,20 @@
+# The test image builds from the repository root so it can reach the shared
+# tests/ tree. Without this, every package's node_modules and build output
+# would be shipped to the daemon as build context.
+**/node_modules
+**/build
+**/dist
+**/coverage
+**/.storage
+
+contracts/artifacts
+contracts/cache
+contracts/typechain-types
+contracts/deployments
+
+.git
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.docker
