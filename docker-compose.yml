@@ -1,0 +1,243 @@
+# DotLaunch — full local stack.
+#
+#   docker compose up --build     # start everything
+#   docker compose run --rm seed  # deploy contracts + load demo data
+#
+# Everything runs offline: the chain is a local anvil node, uploads go to
+# disk instead of IPFS, and no service reaches the public internet at runtime.
+#
+# Startup order is enforced with health checks — anvil, mongo and redis must
+# be answering before `deployer` runs, and `deployer` must exit successfully
+# before the API or the web app start. That is what makes `up` reliable from
+# a clean clone rather than a race between containers.
+
+name: dotlaunch
+
+services:
+  # ── Local EVM chain ───────────────────────────────────────────────────────
+  # Anvil (Foundry) with the public development mnemonic, so account and
+  # contract addresses are identical on every run.
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.0.0
+    container_name: dotlaunch-anvil
+    entrypoint: ["anvil"]
+    command:
+      - --host=0.0.0.0
+      - --port=8545
+      - --chain-id=31337
+      - --mnemonic=test test test test test test test test test test test junk
+      - --accounts=20
+      - --balance=10000
+      # No --block-time: anvil defaults to automine, mining one block per
+      # transaction. That is deliberate. Interval mining races the seeder's
+      # evm_setNextBlockTimestamp calls, and it makes the chain clock drift
+      # away from the fixed instant the UI renders against. With automine the
+      # chain only advances when something actually happens, so a seeded
+      # environment stays reproducible for as long as it is left running.
+      # Genesis is pinned 45 days before the instant the web app treats as
+      # "now" (FIXED_NOW in .env.docker). The seeder replays that history —
+      # running and closing the past sales at their real times — and parks
+      # the clock exactly on FIXED_NOW when it finishes, so on-chain state
+      # and the rendered countdowns agree.
+      - --timestamp=${DEMO_CHAIN_TIMESTAMP:-1746100800}
+    ports:
+      - "${ANVIL_PORT:-8545}:8545"
+    healthcheck:
+      test:
+        - CMD
+        - cast
+        - block-number
+        - --rpc-url
+        - http://127.0.0.1:8545
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  # ── Datastores ────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:6
+    container_name: dotlaunch-mongo
+    command: ["--quiet", "--logpath", "/dev/null"]
+    # Published on a non-default host port so the API test suite and a mongo
+    # shell can reach it from outside the compose network, without colliding
+    # with a MongoDB the developer may already be running on 27017.
+    ports:
+      - "${MONGO_PORT:-27018}:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+  redis:
+    image: redis:7-alpine
+    container_name: dotlaunch-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Internal only, for the same reason as mongo.
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      start_period: 3s
+
+  # ── One-shot: compile and deploy contracts ────────────────────────────────
+  # Runs to completion, then exits. Everything downstream waits for a clean
+  # exit, so the API never starts pointing at contracts that do not exist.
+  deployer:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    # Shared with the `seed` service below. `seed` sits behind a profile, so
+    # `docker compose up --build` never rebuilds it on its own; pinning both
+    # to one image name means building the stack always refreshes both, and
+    # seeding can never run stale code against freshly built contracts.
+    image: dotlaunch-tools
+    container_name: dotlaunch-deployer
+    environment:
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+    volumes:
+      - deployments:/app/deployments
+    depends_on:
+      anvil:
+        condition: service_healthy
+    command: ["npx", "hardhat", "run", "--network", "localhost", "scripts/deploy-all.js"]
+    restart: "no"
+
+  # ── API ───────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dotlaunch-api
+    env_file:
+      - .env.docker
+    environment:
+      MONGO_URL: mongodb://mongo:27017/dotlaunch
+      REDIS_URL: redis://redis:6379
+      CHAIN_RPC_URL: http://anvil:8545
+      STORAGE_LOCAL_DIR: /app/.storage
+    ports:
+      - "${API_PORT:-8888}:8888"
+    volumes:
+      - storage-data:/app/.storage
+      - deployments:/app/deployments:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+      deployer:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8888/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ── Web app ───────────────────────────────────────────────────────────────
+  # Production build served by nginx. Contract addresses and feature flags
+  # are injected at container start (see docker/entrypoint.sh) rather than
+  # baked in at build time, so the same image works against any chain.
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dotlaunch-web
+    env_file:
+      - .env.docker
+    environment:
+      # Browser-facing URLs, so these are host addresses, not service names.
+      API_BASE_URL: http://localhost:${API_PORT:-8888}/api/v1
+      CHAIN_RPC_URL: http://localhost:${ANVIL_PORT:-8545}
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  # ── One-shot: seed demo data ──────────────────────────────────────────────
+  # Not started by `up`; run explicitly:  docker compose run --rm seed
+  seed:
+    build:
+      context: ./contracts
+      dockerfile: Dockerfile
+    image: dotlaunch-tools
+    container_name: dotlaunch-seed
+    profiles: ["tools"]
+    environment:
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      MONGO_URL: mongodb://mongo:27017/dotlaunch
+      # Presale metadata goes through the API's campaign endpoint so seeded
+      # sales resolve exactly like user-created ones. The seeder reaches the
+      # API by service name; the URI recorded on chain has to be the address
+      # the *browser* will fetch, hence the separate public base.
+      API_BASE_URL: http://api:8888/api/v1
+      PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8888}/api/v1
+    volumes:
+      - deployments:/app/deployments
+    # Depends on the API rather than the deployer. `docker compose run`
+    # restarts a service's dependencies, and re-running the deployer would
+    # put a second set of contracts on the chain at different addresses.
+    # The API already waits for the deployer, so this ordering is sufficient.
+    depends_on:
+      anvil:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["npx", "hardhat", "run", "--network", "localhost", "scripts/seed-demo-data.js"]
+    restart: "no"
+
+  # ── One-shot: the API test suite ──────────────────────────────────────────
+  # Runs unit and integration tests with a real MongoDB available, which is
+  # what the integration tests need. Not started by `up`:
+  #   docker compose run --rm test
+  test:
+    build:
+      # Repo root, so the image can copy both the package and the shared
+      # tests/ tree that the Jest config points at.
+      context: .
+      dockerfile: backend/Dockerfile.test
+    image: dotlaunch-api-test
+    container_name: dotlaunch-api-test
+    profiles: ["tools"]
+    environment:
+      NODE_ENV: test
+      MONGO_URL: mongodb://mongo:27017/dotlaunch_test
+      REDIS_URL: redis://redis:6379
+      CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      JWT_SECRET: test-signing-secret
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /app/.storage
+      EVENT_LISTENER_ENABLED: "false"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      anvil:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  mongo-data:
+  storage-data:
+  deployments:
