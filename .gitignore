@@ -5,6 +5,10 @@ node_modules/
 
 # Build output
 build/
+# ...except the deployer ABI the event listener loads at runtime. The generic
+# build/ rule above swallowed it, so a clean clone had no ABI to build the
+# contract with and the listener died on startup.
+!backend/src/loaders/bscEventListener/config/smartContract/build/
 dist/
 coverage/
 *.tsbuildinfo
