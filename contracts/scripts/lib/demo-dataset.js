@@ -193,7 +193,127 @@ const PRESALES = Object.freeze([
       socials: { twitter: "https://twitter.com/example_qvt" },
     },
   },
-
+  {
+    key: "zenith",
+    name: "Zenith Labs",
+    symbol: "ZNTH",
+    decimals: 18,
+    supply: "120000000",
+    owner: "founder",
+    state: "live",
+    type: "FAIR",
+    payment: "native",
+    // Fair launches carry no softcap and no per-wallet limits; the deployer
+    // rejects the sale outright if any of those are set.
+    softCap: "0",
+    hardCap: "50",
+    presaleRate: 1200,
+    listingRate: 1000,
+    minBuy: "0",
+    maxBuy: "0",
+    startOffsetDays: -2,
+    endOffsetDays: 7,
+    saleEndOffsetDays: 9,
+    contributions: ["3.5", "12", "6", "2.25"],
+    metadata: {
+      description:
+        "Zenith Labs builds verifiable off-chain compute. This is a fair " +
+        "launch: every contributor receives a share of the pool proportional " +
+        "to their contribution, with no allocation caps.",
+      website: "https://zenith.example",
+      tags: ["Fair Launch", "Compute"],
+      socials: { twitter: "https://twitter.com/example_zenith" },
+    },
+  },
+  {
+    key: "solaris",
+    name: "Solaris DAO",
+    symbol: "SOL8",
+    decimals: 18,
+    supply: "300000000",
+    owner: "founder",
+    state: "finalised",
+    type: "NORMAL",
+    payment: "native",
+    softCap: "20",
+    hardCap: "40",
+    presaleRate: 1500,
+    listingRate: 1200,
+    minBuy: "0.2",
+    maxBuy: "8",
+    startOffsetDays: -32,
+    endOffsetDays: -24,
+    saleEndOffsetDays: -22,
+    contributions: ["8", "8", "7.5", "6", "5.5", "5"],
+    metadata: {
+      description:
+        "Solaris DAO funds open-source public goods through quadratic " +
+        "matching. The presale closed above its softcap and liquidity has " +
+        "been locked for twelve months.",
+      website: "https://solaris.example",
+      tags: ["DAO", "Public Goods", "Completed"],
+      socials: { twitter: "https://twitter.com/example_solaris" },
+    },
+  },
+  {
+    key: "meridian",
+    name: "Meridian",
+    symbol: "MRDN",
+    decimals: 18,
+    supply: "150000000",
+    owner: "cofounder",
+    state: "cancelled",
+    type: "NORMAL",
+    payment: "native",
+    softCap: "50",
+    hardCap: "100",
+    presaleRate: 2200,
+    listingRate: 1800,
+    minBuy: "0.5",
+    maxBuy: "10",
+    startOffsetDays: -28,
+    endOffsetDays: -18,
+    saleEndOffsetDays: -16,
+    contributions: ["4", "3.5", "2"],
+    metadata: {
+      description:
+        "Meridian was a cross-margin perpetuals venue. The team cancelled " +
+        "the raise before close and all contributions became refundable.",
+      website: "https://meridian.example",
+      tags: ["Cancelled"],
+      socials: { twitter: "https://twitter.com/example_meridian" },
+    },
+  },
+  {
+    key: "cobalt",
+    name: "Cobalt Network",
+    symbol: "CBLT",
+    decimals: 18,
+    supply: "60000000",
+    owner: "cofounder",
+    state: "failed",
+    type: "NORMAL",
+    payment: "native",
+    softCap: "60",
+    hardCap: "120",
+    presaleRate: 800,
+    listingRate: 650,
+    minBuy: "0.5",
+    maxBuy: "12",
+    startOffsetDays: -20,
+    endOffsetDays: -8,
+    saleEndOffsetDays: -6,
+    // Deliberately well under the 60 softcap so the UI shows a failed raise.
+    contributions: ["6", "4.5", "3"],
+    metadata: {
+      description:
+        "Cobalt Network aimed to build a decentralised CDN. The raise closed " +
+        "below its softcap, so contributors can reclaim their funds in full.",
+      website: "https://cobalt.example",
+      tags: ["Failed", "Refundable"],
+      socials: { twitter: "https://twitter.com/example_cobalt" },
+    },
+  },
 ]);
 
 module.exports = { DEMO_NOW, HISTORY_DAYS, DAY, HOUR, at, ACCOUNTS, PRESALES };
