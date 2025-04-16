@@ -316,4 +316,106 @@ const PRESALES = Object.freeze([
   },
 ]);
 
-module.exports = { DEMO_NOW, HISTORY_DAYS, DAY, HOUR, at, ACCOUNTS, PRESALES };
+/**
+ * Standalone tokens.
+ *
+ * Deployed through the factory but never attached to a presale, so the
+ * "Manage Tokens" screen has content and the multisend screen has something
+ * to distribute.
+ */
+const STANDALONE_TOKENS = Object.freeze([
+  {
+    key: "usdd",
+    name: "Demo USD",
+    symbol: "DUSD",
+    decimals: 18,
+    supply: "10000000",
+    owner: "admin",
+    kind: "standard",
+    capabilities: { mint: true, burn: true, pause: false, blacklist: false },
+  },
+  {
+    key: "orbit",
+    name: "Orbit Token",
+    symbol: "ORBT",
+    decimals: 18,
+    supply: "75000000",
+    owner: "founder",
+    kind: "standard",
+    capabilities: { mint: false, burn: true, pause: true, blacklist: true },
+  },
+  {
+    key: "ember",
+    name: "Ember",
+    symbol: "EMBR",
+    decimals: 9,
+    supply: "1000000000",
+    owner: "founder",
+    kind: "liquidity",
+    // [liquidity, marketing, reward, burn] in basis points.
+    fees: [200, 100, 100, 50],
+    capabilities: { mint: false, burn: true, pause: false, blacklist: true },
+  },
+]);
+
+/**
+ * Token locks.
+ *
+ * `tokenKey` refers to a presale token or a standalone token above.
+ * Unlock dates span past (claimable), near future and far future so the lock
+ * list renders every state.
+ */
+const LOCKS = Object.freeze([
+  {
+    tokenKey: "orbit",
+    owner: "founder",
+    amount: "5000000",
+    unlockAt: at(30),
+    isLp: false,
+    label: "Team allocation",
+  },
+  {
+    tokenKey: "orbit",
+    owner: "locker",
+    amount: "1200000",
+    unlockAt: at(120),
+    isLp: false,
+    label: "Advisor allocation",
+  },
+  {
+    tokenKey: "ember",
+    owner: "founder",
+    amount: "40000000",
+    unlockAt: at(7),
+    isLp: false,
+    label: "Marketing reserve",
+  },
+  {
+    tokenKey: "usdd",
+    owner: "admin",
+    amount: "250000",
+    unlockAt: at(-2),
+    isLp: false,
+    label: "Treasury tranche (unlocked)",
+  },
+  {
+    tokenKey: "usdd",
+    owner: "admin",
+    amount: "500000",
+    unlockAt: at(365),
+    isLp: false,
+    label: "Treasury tranche (12 months)",
+  },
+]);
+
+module.exports = {
+  DEMO_NOW,
+  HISTORY_DAYS,
+  DAY,
+  HOUR,
+  at,
+  ACCOUNTS,
+  PRESALES,
+  STANDALONE_TOKENS,
+  LOCKS,
+};
