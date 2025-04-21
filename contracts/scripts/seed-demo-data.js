@@ -333,6 +333,44 @@ const ensureBalance = async (token, minter, holder, amount) => {
   await (await token.connect(minter).transfer(holder.address, shortfall)).wait();
 };
 
+/** Create the token locks. */
+const seedLocks = async (context, tokenAddresses, tokenMinters) => {
+  const { locker, accounts } = context;
+  const created = [];
+
+  for (const spec of LOCKS) {
+    const tokenAddress = tokenAddresses[spec.tokenKey];
+    if (!tokenAddress) {
+      log(`  ! no token for lock "${spec.label}" (${spec.tokenKey}), skipping`);
+      continue;
+    }
+
+    const owner = accounts[spec.owner];
+    const token = await ethers.getContractAt("ManagedStandardToken", tokenAddress);
+    const decimals = await token.decimals();
+    const amount = ethers.utils.parseUnits(spec.amount, decimals);
+
+    const minterRole = tokenMinters[spec.tokenKey];
+    if (minterRole) {
+      await ensureBalance(token, accounts[minterRole], owner, amount);
+    }
+
+    await (await token.connect(owner).approve(locker.address, amount)).wait();
+    const tx = await locker
+      .connect(owner)
+      .lock(owner.address, tokenAddress, spec.isLp, amount, spec.unlockAt);
+    await tx.wait();
+
+    log(
+      `  lock    ${spec.label.padEnd(28)} ${spec.amount.padStart(12)} ` +
+        `unlocks ${chainTime.iso(spec.unlockAt).slice(0, 10)}`
+    );
+    created.push(spec.label);
+  }
+
+  return created;
+};
+
 /** Refuse to seed twice onto the same chain. */
 const assertNotAlreadySeeded = async (deployer) => {
   const normal = await deployer.launchpadCount(LAUNCHPAD_TYPE.NORMAL);
@@ -395,7 +433,7 @@ async function main() {
   // create it while its unlock date is still ahead and then let the clock
   // walk past it - which is exactly what seeding the presales does next.
   step("Token locks");
-
+  await seedLocks({ ...context, locker }, tokenAddresses, tokenMinters);
 
   step("Presales");
   // Ordered by start time so the clock only ever moves forward.
