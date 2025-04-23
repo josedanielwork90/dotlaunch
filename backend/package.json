@@ -36,8 +36,20 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "rootDir": "..",
     "testMatch": [
-      "<rootDir>/test/**/*.test.js"
+      "<rootDir>/tests/backend/**/*.test.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/backend/setup.js"
+    ],
+    "modulePaths": [
+      "<rootDir>/backend/node_modules"
+    ],
+    "collectCoverageFrom": [
+      "backend/src/**/*.js",
+      "!backend/src/app.js",
+      "!backend/src/loaders/bscEventListener/config/**"
     ],
     "coverageReporters": [
       "text-summary",
