@@ -1,0 +1,29 @@
+# Test image for the API: production dependencies plus the dev tooling and
+# the test suite, which the runtime image deliberately excludes.
+#
+# The build context is the repository root, not this package. The suites live
+# in the repo-wide `tests/` tree, and the Jest config resolves them relative
+# to the repo root (rootDir: ".."), so the image has to reproduce that same
+# two-directory layout for the paths to line up.
+FROM node:18-bullseye-slim
+
+WORKDIR /app
+
+COPY backend/package.json backend/package-lock.json* ./backend/
+
+# `npm ci`, not `npm install`: npm 10.8 intermittently aborts an install with
+# "Exit handler never called" and leaves node_modules/.bin unwritten, so the
+# test runner is present as a package but has no executable. `ci` installs
+# straight from the lockfile and does not hit it.
+RUN cd backend && npm ci --no-audit --no-fund
+
+COPY backend/src ./backend/src
+COPY backend/.eslintrc.json* ./backend/
+COPY tests/backend ./tests/backend
+
+RUN mkdir -p /app/backend/.storage
+
+WORKDIR /app/backend
+
+ENV NODE_ENV=test
+CMD ["npm", "test"]
