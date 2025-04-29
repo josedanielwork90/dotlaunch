@@ -109,4 +109,89 @@ describe("config", () => {
     });
   });
 
+  describe("deployment record", () => {
+    let directory;
+
+    beforeEach(() => {
+      directory = fs.mkdtempSync(path.join(os.tmpdir(), "dotlaunch-deploy-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(directory, { recursive: true, force: true });
+    });
+
+    const writeRecord = (record) =>
+      fs.writeFileSync(
+        path.join(directory, "localhost.json"),
+        JSON.stringify(record)
+      );
+
+    it("reads contract addresses and start block from the record", () => {
+      writeRecord({
+        startBlock: 27,
+        contracts: {
+          launchpadDeployer: "0xDeployer",
+          tokenLock: "0xLock",
+          manageToken: "0xFactory",
+          bulkTransfer: "0xMultisend",
+        },
+      });
+
+      const config = loadConfig({
+        DEPLOYMENTS_DIR: directory,
+        CONTRACT_LAUNCHPAD_DEPLOYER: undefined,
+        CONTRACT_TOKEN_LOCK: undefined,
+        CONTRACT_TOKEN_MANAGE: undefined,
+        CONTRACT_MULTISEND: undefined,
+        EVENT_LISTENER_START_BLOCK: undefined,
+      });
+
+      expect(config.contracts.launchpadDeployer).toBe("0xDeployer");
+      expect(config.contracts.tokenManage).toBe("0xFactory");
+      expect(config.contracts.multisend).toBe("0xMultisend");
+      expect(config.eventListener.startBlock).toBe(27);
+    });
+
+    it("lets the environment override the record", () => {
+      writeRecord({
+        startBlock: 27,
+        contracts: { launchpadDeployer: "0xFromFile" },
+      });
+
+      const config = loadConfig({
+        DEPLOYMENTS_DIR: directory,
+        CONTRACT_LAUNCHPAD_DEPLOYER: "0xFromEnv",
+      });
+
+      expect(config.contracts.launchpadDeployer).toBe("0xFromEnv");
+    });
+
+    it("starts with empty addresses when there is no record", () => {
+      const config = loadConfig({
+        DEPLOYMENTS_DIR: path.join(directory, "missing"),
+        CONTRACT_LAUNCHPAD_DEPLOYER: undefined,
+      });
+
+      expect(config.contracts.launchpadDeployer).toBe("");
+      expect(config.eventListener.startBlock).toBe(0);
+    });
+
+    it("survives a corrupt record rather than failing to boot", () => {
+      fs.writeFileSync(path.join(directory, "localhost.json"), "{ not json");
+
+      const config = loadConfig({
+        DEPLOYMENTS_DIR: directory,
+        CONTRACT_LAUNCHPAD_DEPLOYER: undefined,
+      });
+
+      expect(config.contracts.launchpadDeployer).toBe("");
+    });
+  });
+
+  describe("immutability", () => {
+    it("is frozen, so nothing can mutate it at runtime", () => {
+      const config = loadConfig();
+      expect(Object.isFrozen(config)).toBe(true);
+    });
+  });
 });
