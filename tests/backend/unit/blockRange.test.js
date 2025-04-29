@@ -137,4 +137,87 @@ describe("getMultiEventsByName", () => {
     });
   });
 
+  describe("range capping", () => {
+    /**
+     * Public RPC nodes reject `eth_getLogs` over a wide range, so a listener
+     * catching up from cold has to walk forward in bounded steps rather than
+     * asking for the whole history at once.
+     */
+    it("caps a single scan at the configured maximum", async () => {
+      const worker = loadWorker({
+        CHAIN_CONFIRMATIONS: "0",
+        EVENT_LISTENER_BLOCK_RANGE: "1000",
+      });
+      const contract = recordingContract();
+
+      const { startBlock, endBlock } = await worker.getMultiEventsByName({
+        eventList: eventListFor(contract),
+        provider: providerAt(500000),
+        startBlockNumber: 1,
+      });
+
+      expect(endBlock - startBlock).toBeLessThanOrEqual(1000);
+    });
+
+    it("makes forward progress when capped, so catch-up terminates", async () => {
+      const worker = loadWorker({
+        CHAIN_CONFIRMATIONS: "0",
+        EVENT_LISTENER_BLOCK_RANGE: "1000",
+      });
+
+      let cursor = 1;
+      const head = 5000;
+
+      for (let i = 0; i < 10 && cursor < head; i += 1) {
+        const contract = recordingContract();
+        // eslint-disable-next-line no-await-in-loop
+        const { endBlock } = await worker.getMultiEventsByName({
+          eventList: eventListFor(contract),
+          provider: providerAt(head),
+          startBlockNumber: cursor,
+        });
+
+        expect(endBlock).toBeGreaterThan(cursor);
+        cursor = endBlock + 1;
+      }
+
+      expect(cursor).toBeGreaterThan(head);
+    });
+  });
+
+  describe("querying", () => {
+    it("queries every event in the list over the same range", async () => {
+      const worker = loadWorker({ CHAIN_CONFIRMATIONS: "0" });
+      const a = recordingContract();
+      const b = recordingContract();
+
+      await worker.getMultiEventsByName({
+        eventList: [
+          { eventName: "someEvent", contract: a },
+          { eventName: "someEvent", contract: b },
+        ],
+        provider: providerAt(50),
+        startBlockNumber: 10,
+      });
+
+      expect(a.calls).toEqual([{ from: 10, to: 50 }]);
+      expect(b.calls).toEqual([{ from: 10, to: 50 }]);
+    });
+
+    it("returns one result slot per requested event", async () => {
+      const worker = loadWorker({ CHAIN_CONFIRMATIONS: "0" });
+
+      const { results } = await worker.getMultiEventsByName({
+        eventList: [
+          { eventName: "someEvent", contract: recordingContract() },
+          { eventName: "someEvent", contract: recordingContract() },
+          { eventName: "someEvent", contract: recordingContract() },
+        ],
+        provider: providerAt(50),
+        startBlockNumber: 10,
+      });
+
+      expect(results).toHaveLength(3);
+    });
+  });
 });
