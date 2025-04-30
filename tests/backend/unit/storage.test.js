@@ -180,3 +180,43 @@ describe("StorageProvider.extractCid", () => {
     expect(StorageProvider.extractCid(input)).toBe(expected);
   });
 });
+
+describe("createStorageProvider", () => {
+  it("builds the local driver", () => {
+    const provider = createStorageProvider({
+      driver: "local",
+      localDir: fs.mkdtempSync(path.join(os.tmpdir(), "dotlaunch-factory-")),
+      publicBaseUrl: "http://localhost:8888/api/v1/storage",
+    });
+
+    expect(provider).toBeInstanceOf(LocalStorageProvider);
+  });
+
+  it("rejects an unknown driver by name", () => {
+    expect(() => createStorageProvider({ driver: "s3" })).toThrow(
+      /unknown storage_driver "s3"/i
+    );
+  });
+
+  /**
+   * The Pinata driver is the one place a third-party SDK is used. Selecting
+   * it without a credential must fail loudly at startup rather than at the
+   * moment a user tries to create a presale.
+   */
+  it("refuses the pinata driver with no credential", () => {
+    expect(() =>
+      createStorageProvider({ driver: "pinata", pinataJwt: "" })
+    ).toThrow(/requires PINATA_JWT/i);
+  });
+});
+
+describe("StorageProvider base class", () => {
+  it("requires subclasses to implement the interface", async () => {
+    class Incomplete extends StorageProvider {}
+    const incomplete = new Incomplete();
+
+    await expect(incomplete.putJSON({})).rejects.toThrow(/must implement putJSON/);
+    await expect(incomplete.getJSON("x")).rejects.toThrow(/must implement getJSON/);
+    expect(() => incomplete.publicUrl("x")).toThrow(/must implement publicUrl/);
+  });
+});

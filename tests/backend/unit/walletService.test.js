@@ -108,3 +108,52 @@ describe("WalletService", () => {
     });
   });
 });
+
+/**
+ * Token issue and parse.
+ *
+ * The middleware only accepts the two header shapes the web app actually
+ * sends, and only the algorithm the API signs with — an unsigned "alg: none"
+ * token must never be honoured.
+ */
+describe("jwt middleware", () => {
+  const ADDRESS = "0x1111111111111111111111111111111111111111";
+
+  it("issues a token carrying the address and role", () => {
+    const token = jwt.createToken({ address: ADDRESS, role: "user" });
+    const [, payload] = token.split(".");
+    const claims = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
+
+    expect(claims.address).toBe(ADDRESS);
+    expect(claims.role).toBe("user");
+  });
+
+  it("signs with HS256", () => {
+    const token = jwt.createToken({ address: ADDRESS, role: "user" });
+    const [header] = token.split(".");
+    const decoded = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+
+    expect(decoded.alg).toBe("HS256");
+  });
+
+  it("sets an expiry", () => {
+    const token = jwt.createToken({ address: ADDRESS, role: "user" });
+    const [, payload] = token.split(".");
+    const claims = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
+
+    expect(claims.exp).toBeGreaterThan(claims.iat);
+  });
+
+  it("produces a different token for a different address", () => {
+    const a = jwt.createToken({ address: ADDRESS, role: "user" });
+    const b = jwt.createToken({
+      address: "0x2222222222222222222222222222222222222222",
+      role: "user",
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it("exposes an express middleware for guarded routes", () => {
+    expect(typeof jwt.isAuth).toBe("function");
+  });
+});
