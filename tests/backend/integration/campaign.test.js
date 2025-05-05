@@ -124,4 +124,85 @@ describe("CampaignService", () => {
     });
   });
 
+  describe("getCampaign", () => {
+    it("returns an empty object for an unknown opcode", async () => {
+      const result = await service.getCampaign({ opcode: "NOT_A_REAL_OPCODE" });
+
+      expect(result).toEqual({});
+    });
+
+    /**
+     * The detail page renders straight from this result, so an unknown
+     * opcode has to come back as something safe to spread — never null.
+     */
+    it("never returns null", async () => {
+      const result = await service.getCampaign({ opcode: undefined });
+
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe("editCampaign", () => {
+    it("applies an edit made by the owner", async () => {
+      const [, opcode] = await create();
+
+      const ok = await service.editCampaign({
+        opcode,
+        campaignData: campaignBody({ description: "Edited by the owner" }),
+      });
+
+      expect(ok).toBe(true);
+      const stored = await service.getCampaign({ opcode });
+      expect(stored.description).toBe("Edited by the owner");
+    });
+
+    it("matches the owner case-insensitively", async () => {
+      const [, opcode] = await create();
+
+      const ok = await service.editCampaign({
+        opcode,
+        campaignData: campaignBody({
+          owner: OWNER.toLowerCase(),
+          description: "Lowercase owner",
+        }),
+      });
+
+      expect(ok).toBe(true);
+    });
+
+    it("refuses an edit from another address", async () => {
+      const [, opcode] = await create({ description: "Original copy" });
+
+      const ok = await service.editCampaign({
+        opcode,
+        campaignData: campaignBody({
+          owner: STRANGER,
+          description: "Hijacked",
+        }),
+      });
+
+      expect(ok).toBe(false);
+    });
+
+    it("leaves the document untouched when it refuses", async () => {
+      const [, opcode] = await create({ description: "Untouched" });
+
+      await service.editCampaign({
+        opcode,
+        campaignData: campaignBody({ owner: STRANGER, description: "Nope" }),
+      });
+
+      const stored = await service.getCampaign({ opcode });
+      expect(stored.description).toBe("Untouched");
+    });
+
+    it("refuses an edit to an opcode that does not exist", async () => {
+      const ok = await service.editCampaign({
+        opcode: "NOT_A_REAL_OPCODE",
+        campaignData: campaignBody(),
+      });
+
+      expect(ok).toBe(false);
+    });
+  });
 });
