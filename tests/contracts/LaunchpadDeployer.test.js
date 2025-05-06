@@ -230,4 +230,118 @@ describe("Launchpad deployer", () => {
     });
   });
 
+  describe("closing a successful sale", () => {
+    it("lets a contributor claim their tokens once the sale ends", async () => {
+      const { presale, saleToken, endAt } = await deployPresale();
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.04"), {
+          value: ethers.utils.parseEther("0.04"),
+        });
+
+      await time.increaseTo(endAt + 1);
+
+      const before = await saleToken.balanceOf(user.address);
+      await presale.connect(user).claimFund();
+
+      expect(await saleToken.balanceOf(user.address)).to.be.gt(before);
+    });
+
+    it("lets the owner finish a sale that met its soft cap", async () => {
+      const { presale, endAt } = await deployPresale();
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.04"), {
+          value: ethers.utils.parseEther("0.04"),
+        });
+
+      await time.increaseTo(endAt + 1);
+      await presale.connect(user).claimFund();
+      await presale.connect(owner).finishSale();
+
+      // 1 == FINISHED
+      expect(await presale.status()).to.equal(1);
+    });
+
+    /** A sale below its soft cap must not be finalisable. */
+    it("refuses to finish a sale below its soft cap", async () => {
+      const { presale, endAt } = await deployPresale();
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.005"), {
+          value: ethers.utils.parseEther("0.005"),
+        });
+
+      await time.increaseTo(endAt + 1);
+
+      await expect(presale.connect(owner).finishSale()).to.be.revertedWith(
+        "Launchpad(Normal): Soft cap not reached"
+      );
+    });
+  });
+
+  describe("cancelling", () => {
+    it("lets the owner cancel an open sale", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await presale.connect(owner).cancelSale();
+
+      // 2 == CANCELLED
+      expect(await presale.status()).to.equal(2);
+    });
+
+    it("refuses a cancellation from anyone else", async () => {
+      const { presale } = await deployPresale();
+
+      await expect(presale.connect(user).cancelSale()).to.be.revertedWith(
+        "Launchpad: Caller not allowed"
+      );
+    });
+
+    it("refunds contributors after a cancellation", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      // Below the soft cap: once a sale has met its soft cap the owner can
+      // no longer pull it, so a cancellable sale is by definition a small one.
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.01"), {
+          value: ethers.utils.parseEther("0.01"),
+        });
+
+      await presale.connect(owner).cancelSale();
+
+      await expect(() =>
+        presale.connect(user).claimRefund()
+      ).to.changeEtherBalance(user, ethers.utils.parseEther("0.01"));
+    });
+
+    /**
+     * Contributors past the soft cap have a reasonable expectation the raise
+     * will complete, so the owner loses the ability to cancel at that point.
+     */
+    it("refuses to cancel once the soft cap has been met", async () => {
+      const { presale } = await deployPresale();
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.03"),
+        });
+
+      await expect(presale.connect(owner).cancelSale()).to.be.revertedWith(
+        "Launchpad(Normal): Soft cap reached"
+      );
+    });
+  });
+
 });
