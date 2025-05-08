@@ -344,4 +344,64 @@ describe("Launchpad deployer", () => {
     });
   });
 
+  describe("whitelisting", () => {
+    it("blocks a non-whitelisted contributor while the gate is up", async () => {
+      const { presale } = await deployPresale();
+      await presale.connect(owner).enableWhitelist();
+      await time.increase(1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.03"),
+        })
+      ).to.be.revertedWith("Launchpad: User can not invest");
+    });
+
+    it("admits a whitelisted contributor", async () => {
+      const { presale } = await deployPresale();
+      await presale.connect(owner).enableWhitelist();
+      await presale.connect(owner).grantWhitelist([user.address]);
+      await time.increase(1);
+
+      await presale
+        .connect(user)
+        .invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.03"),
+        });
+
+      expect(await presale.totalDeposits()).to.equal(
+        ethers.utils.parseEther("0.03")
+      );
+    });
+
+    it("blocks a contributor whose whitelist access was revoked", async () => {
+      const { presale } = await deployPresale();
+      await presale.connect(owner).enableWhitelist();
+      await presale.connect(owner).grantWhitelist([user.address]);
+      await presale.connect(owner).revokeWhitelist([user.address]);
+      await time.increase(1);
+
+      await expect(
+        presale.connect(user).invest(ethers.utils.parseEther("0.03"), {
+          value: ethers.utils.parseEther("0.03"),
+        })
+      ).to.be.revertedWith("Launchpad: User can not invest");
+    });
+  });
+
+  describe("contract info", () => {
+    it("reports the configured sale parameters", async () => {
+      const { presale } = await deployPresale();
+
+      expect(await presale.softCap()).to.equal(SOFT_CAP);
+      expect(await presale.hardCap()).to.equal(HARD_CAP);
+      expect(await presale.presaleRate()).to.equal(PRESALE_RATE);
+      expect(await presale.listingRate()).to.equal(LISTING_RATE);
+    });
+
+    it("hands ownership of the presale to its creator", async () => {
+      const { presale } = await deployPresale();
+      expect(await presale.owner()).to.equal(owner.address);
+    });
+  });
 });

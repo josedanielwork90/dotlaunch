@@ -225,4 +225,65 @@ describe("ManageToken", () => {
     });
   });
 
+  describe("paging over all tokens", () => {
+    beforeEach(async () => {
+      await createStandard(creator, [0, 0, 0, 0]);
+      await createStandard(creator, [0, 0, 0, 0]);
+      await createStandard(stranger, [0, 0, 0, 0]);
+    });
+
+    it("returns the requested slice", async () => {
+      expect(await factory.allTokens(0, 1)).to.have.lengthOf(2);
+      expect(await factory.allTokens(0, 2)).to.have.lengthOf(3);
+    });
+
+    /** Paging past the end returns nothing rather than reverting. */
+    it("clamps a range that runs past the end", async () => {
+      expect(await factory.allTokens(0, 100)).to.have.lengthOf(3);
+      expect(await factory.allTokens(99, 200)).to.have.lengthOf(0);
+    });
+  });
+
+  describe("administration", () => {
+    it("lets the owner withdraw accumulated fees", async () => {
+      await createStandard(creator, [1, 1, 1, 1]);
+      const accumulated = await factory.getBalance();
+      expect(accumulated).to.be.gt(0);
+
+      await expect(() => factory.ownerWithdraw()).to.changeEtherBalance(
+        owner,
+        accumulated
+      );
+      expect(await factory.getBalance()).to.equal(0);
+    });
+
+    it("refuses a withdrawal from anyone else", async () => {
+      await createStandard(creator, [0, 0, 0, 0]);
+
+      await expect(
+        factory.connect(stranger).ownerWithdraw()
+      ).to.be.revertedWith("ManageToken: caller is not the owner");
+    });
+
+    it("refuses a withdrawal when there is nothing to take", async () => {
+      await expect(factory.ownerWithdraw()).to.be.revertedWith(
+        "ManageToken: nothing to withdraw"
+      );
+    });
+
+    it("transfers ownership", async () => {
+      await factory.setOwner(stranger.address);
+      expect(await factory.owner()).to.equal(stranger.address);
+
+      await expect(factory.initFee(1, 1, 1, 1, 1, 1)).to.be.revertedWith(
+        "ManageToken: caller is not the owner"
+      );
+    });
+
+    it("refuses to hand ownership to the zero address", async () => {
+      await expect(
+        factory.setOwner(ethers.constants.AddressZero)
+      ).to.be.revertedWith("ManageToken: zero owner");
+    });
+  });
 });
