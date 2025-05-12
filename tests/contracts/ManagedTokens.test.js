@@ -320,4 +320,106 @@ describe("ManagedLiquidityToken", () => {
     });
   });
 
+  describe("exemptions", () => {
+    /** Presale accounting must be exact, so exempt transfers move at par. */
+    it("moves at par when the owner is exempt", async () => {
+      const FLAG_EXEMPT_OWNER = 4;
+      const token = await deploy([500, 500, 0, 0], FLAG_EXEMPT_OWNER);
+
+      await token.transfer(alice.address, amount(100));
+
+      expect(await token.balanceOf(alice.address)).to.equal(amount(100));
+    });
+
+    it("exempts an address on request", async () => {
+      const token = await deploy([500, 0, 0, 0]);
+      await token.transfer(alice.address, amount(1000));
+      await token.setFeeExempt(alice.address, true);
+
+      await token.connect(alice).transfer(bob.address, amount(100));
+
+      expect(await token.balanceOf(bob.address)).to.equal(amount(100));
+    });
+  });
+
+  describe("quoteTransfer", () => {
+    it("matches what a transfer actually delivers", async () => {
+      const token = await deploy([200, 100, 100, 50]);
+      await token.transfer(alice.address, amount(1000));
+
+      const [received] = await token.quoteTransfer(
+        alice.address,
+        bob.address,
+        amount(100)
+      );
+
+      await token.connect(alice).transfer(bob.address, amount(100));
+
+      expect(await token.balanceOf(bob.address)).to.equal(received);
+    });
+
+    it("quotes no fee for an exempt pair", async () => {
+      const token = await deploy([500, 0, 0, 0]);
+
+      const [received, fee] = await token.quoteTransfer(
+        owner.address,
+        feeReceiver.address,
+        amount(100)
+      );
+
+      expect(fee).to.equal(0);
+      expect(received).to.equal(amount(100));
+    });
+  });
+
+  describe("limits", () => {
+    it("enforces the per-transfer cap when enabled", async () => {
+      const FLAG_MAX_TX = 1;
+      const token = await deploy([100, 0, 0, 0], FLAG_MAX_TX);
+      await token.setFeeExempt(owner.address, true);
+      await token.transfer(alice.address, amount(50000));
+
+      const cap = await token.maxTransactionAmount();
+
+      await expect(
+        token.connect(alice).transfer(bob.address, cap.add(1))
+      ).to.be.revertedWithCustomError(token, "ExceedsMaxTransaction");
+    });
+
+    /** Limits may only be relaxed, so an owner cannot trap holders. */
+    it("refuses to tighten a limit", async () => {
+      const token = await deploy([100, 0, 0, 0], 1);
+      const cap = await token.maxTransactionAmount();
+      const walletCap = await token.maxWalletAmount();
+
+      await expect(
+        token.setLimits(cap.sub(1), walletCap)
+      ).to.be.revertedWith("Token: cannot tighten tx limit");
+    });
+
+    it("allows raising a limit", async () => {
+      const token = await deploy([100, 0, 0, 0], 1);
+      const cap = await token.maxTransactionAmount();
+      const walletCap = await token.maxWalletAmount();
+
+      await token.setLimits(cap.mul(2), walletCap.mul(2));
+
+      expect(await token.maxTransactionAmount()).to.equal(cap.mul(2));
+    });
+  });
+
+  describe("immutability", () => {
+    it("exposes fees as immutable values with no setter", async () => {
+      const token = await deploy([200, 100, 50, 25]);
+
+      expect(await token.liquidityFeeBps()).to.equal(200);
+      expect(await token.marketingFeeBps()).to.equal(100);
+      expect(await token.rewardFeeBps()).to.equal(50);
+      expect(await token.burnFeeBps()).to.equal(25);
+
+      // There is deliberately no way to change them after deployment.
+      expect(token.setFees).to.equal(undefined);
+      expect(token.setLiquidityFee).to.equal(undefined);
+    });
+  });
 });

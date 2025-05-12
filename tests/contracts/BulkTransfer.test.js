@@ -204,4 +204,49 @@ describe("BulkTransfer", () => {
     });
   });
 
+  describe("totalOf", () => {
+    it("sums a batch so the UI can show the approval needed", async () => {
+      const total = await bulk.totalOf([
+        { receiver: a.address, amount: amount(10) },
+        { receiver: b.address, amount: amount(25) },
+        { receiver: c.address, amount: amount(5) },
+      ]);
+
+      expect(total).to.equal(amount(40));
+    });
+
+    it("sums an empty batch to zero", async () => {
+      expect(await bulk.totalOf([])).to.equal(0);
+    });
+
+    it("agrees with what a real transfer actually costs", async () => {
+      const settings = [
+        { receiver: a.address, amount: amount(3) },
+        { receiver: b.address, amount: amount(7) },
+      ];
+      const quoted = await bulk.totalOf(settings);
+
+      await approve(quoted);
+      const before = await token.balanceOf(sender.address);
+      await bulk.connect(sender).bulkTransfer(settings, token.address);
+
+      expect(before.sub(await token.balanceOf(sender.address))).to.equal(quoted);
+    });
+  });
+
+  describe("larger batches", () => {
+    it("handles a realistic airdrop in one transaction", async () => {
+      const signers = await ethers.getSigners();
+      const settings = signers.slice(0, 15).map((s, i) => ({
+        receiver: s.address,
+        amount: amount(i + 1),
+      }));
+      const total = await bulk.totalOf(settings);
+
+      await approve(total);
+      await bulk.connect(sender).bulkTransfer(settings, token.address);
+
+      expect(await token.balanceOf(signers[14].address)).to.be.gte(amount(15));
+    });
+  });
 });
