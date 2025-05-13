@@ -335,4 +335,121 @@ describe("SenseiLock", () => {
     });
   });
 
+  describe("editing", () => {
+    it("extends the unlock date", async () => {
+      const { id, unlockDate } = await lockFor();
+      const extended = unlockDate + 30 * DAY;
+
+      await lock.connect(alice).editLock(id, 0, extended);
+
+      expect((await lock.getLock(id)).unlockDate).to.equal(extended);
+    });
+
+    /** A lock that can be shortened is not a lock. */
+    it("refuses to bring the unlock date forward", async () => {
+      const { id, unlockDate } = await lockFor();
+
+      await expect(
+        lock.connect(alice).editLock(id, 0, unlockDate - DAY)
+      ).to.be.revertedWith(
+        "New unlock time should not be before old unlock time or current time"
+      );
+    });
+
+    it("tops the lock up and takes custody of the difference", async () => {
+      const { id } = await lockFor({ amount: ethers.utils.parseEther("100") });
+      const topped = ethers.utils.parseEther("175");
+
+      await token
+        .connect(owner)
+        .transfer(alice.address, ethers.utils.parseEther("75"));
+      await token
+        .connect(alice)
+        .approve(lock.address, ethers.utils.parseEther("75"));
+
+      await lock.connect(alice).editLock(id, topped, 0);
+
+      expect((await lock.getLock(id)).amount).to.equal(topped);
+      expect(await token.balanceOf(lock.address)).to.equal(topped);
+    });
+
+    it("adds the top-up to the cumulative total", async () => {
+      const { id } = await lockFor({ amount: ethers.utils.parseEther("100") });
+
+      await token
+        .connect(owner)
+        .transfer(alice.address, ethers.utils.parseEther("50"));
+      await token
+        .connect(alice)
+        .approve(lock.address, ethers.utils.parseEther("50"));
+      await lock.connect(alice).editLock(id, ethers.utils.parseEther("150"), 0);
+
+      const info = await lock.cumulativeLockInfo(token.address);
+      expect(info.amount).to.equal(ethers.utils.parseEther("150"));
+    });
+
+    it("refuses to reduce the locked amount", async () => {
+      const { id } = await lockFor({ amount: ethers.utils.parseEther("100") });
+
+      await expect(
+        lock.connect(alice).editLock(id, ethers.utils.parseEther("50"), 0)
+      ).to.be.revertedWith("New amount should not be less than current amount");
+    });
+
+    it("refuses an edit by anyone but the owner", async () => {
+      const { id, unlockDate } = await lockFor({ holder: alice });
+
+      await expect(
+        lock.connect(bob).editLock(id, 0, unlockDate + DAY)
+      ).to.be.revertedWith("You are not the owner of this lock");
+    });
+
+    it("refuses an edit to an already-released lock", async () => {
+      const { id, unlockDate } = await lockFor();
+      await time.increaseTo(unlockDate);
+      await lock.connect(alice).unlock(id);
+
+      await expect(
+        lock.connect(alice).editLock(id, 0, unlockDate + 30 * DAY)
+      ).to.be.revertedWith("Lock was unlocked");
+    });
+
+    it("emits LockUpdated", async () => {
+      const { id, unlockDate } = await lockFor();
+
+      await expect(lock.connect(alice).editLock(id, 0, unlockDate + DAY))
+        .to.emit(lock, "LockUpdated")
+        .withArgs(id, token.address, alice.address, AMOUNT, unlockDate + DAY);
+    });
+
+    it("rejects an unknown lock id", async () => {
+      await expect(lock.connect(alice).editLock(99, 0, 0)).to.be.revertedWith(
+        "Invalid lock id"
+      );
+    });
+  });
+
+  describe("independence between locks", () => {
+    it("releasing one lock leaves another untouched", async () => {
+      const short = await lockFor({ holder: alice, afterSeconds: DAY });
+      const long = await lockFor({ holder: bob, afterSeconds: 90 * DAY });
+
+      await time.increaseTo(short.unlockDate);
+      await lock.connect(alice).unlock(short.id);
+
+      expect((await lock.getLock(long.id)).amount).to.equal(AMOUNT);
+      expect(await token.balanceOf(lock.address)).to.equal(AMOUNT);
+    });
+
+    it("one owner cannot release another owner's lock of the same token", async () => {
+      await lockFor({ holder: alice, afterSeconds: DAY });
+      const bobs = await lockFor({ holder: bob, afterSeconds: DAY });
+
+      await time.increaseTo(bobs.unlockDate);
+
+      await expect(lock.connect(alice).unlock(bobs.id)).to.be.revertedWith(
+        "You are not the owner of this lock"
+      );
+    });
+  });
 });
