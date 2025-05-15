@@ -1,0 +1,9 @@
+{
+  "root": true,
+  "env": { "browser": true, "es2021": true, "jest": true },
+  "extends": ["../../frontend/node_modules/eslint-config-react-app/index.js"],
+  "rules": {
+    "no-unused-vars": "warn",
+    "eqeqeq": ["warn", "smart"]
+  }
+}
