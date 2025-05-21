@@ -123,6 +123,14 @@ const config = Object.freeze({
     ),
   },
 
+  demo: {
+    /**
+     * Pins the API's notion of "now" to a fixed instant so sale states agree
+     * with the seeded chain and the web app. Empty means follow the system
+     * clock, which is what a real deployment does.
+     */
+    fixedNow: str("FIXED_NOW", ""),
+  },
 
   storage: {
     // "local" keeps uploads on disk so the stack runs with no internet

@@ -43,7 +43,19 @@ export interface RuntimeConfig {
   /** Base URL that uploaded metadata is served from. */
   storageBaseUrl: string;
   contracts: ContractAddresses;
-}
+  /**
+   * Demo mode exposes the local chain's unlocked accounts as selectable
+   * wallets, so the app is usable without a browser extension. It must never
+   * be enabled against a live network.
+   */
+  demoMode: boolean;
+  /**
+   * When set, the app treats this ISO instant as "now" everywhere instead of
+   * reading the system clock. Countdowns, relative timestamps and
+   * time-derived sale states all become reproducible, which is what makes
+   * screenshots and time-sensitive tests deterministic.
+   */
+  fixedNow: string | null;
 }
 
 /** Shape of the object `public/config.js` assigns onto `window`. */
@@ -151,6 +163,11 @@ const buildConfig = (): RuntimeConfig => {
         env.REACT_APP_BSC_CONTRACT_ADDR_MULTISEND
       ),
     },
+    demoMode: toBoolean(
+      runtime.demoMode !== undefined ? runtime.demoMode : env.REACT_APP_DEMO_MODE,
+      false
+    ),
+    fixedNow: pick(runtime.fixedNow, env.REACT_APP_FIXED_NOW) || null,
   };
 };
 
@@ -177,6 +194,28 @@ export const reloadRuntimeConfig = (): RuntimeConfig => {
   const next = buildConfig();
   Object.assign(runtimeConfig, next);
   return runtimeConfig;
+};
+
+/**
+ * The application's clock.
+ *
+ * Every relative time in the UI — countdowns, "starts in", sale state
+ * derivation — must read from here rather than calling `Date.now()`, so that
+ * setting `fixedNow` freezes the whole interface at a known instant.
+ */
+export const now = (): number => {
+  const { fixedNow } = runtimeConfig;
+  if (!fixedNow) return Date.now();
+
+  const parsed = Date.parse(fixedNow);
+  return Number.isNaN(parsed) ? Date.now() : parsed;
+};
+
+/** True when the app is pinned to a fixed instant rather than the system clock. */
+export const isClockFrozen = (): boolean => {
+  const { fixedNow } = runtimeConfig;
+  if (!fixedNow) return false;
+  return !Number.isNaN(Date.parse(fixedNow));
 };
 
 /** Explorer link for a transaction hash. */
