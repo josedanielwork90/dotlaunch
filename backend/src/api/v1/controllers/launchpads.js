@@ -2,6 +2,7 @@ const { celebrate, Joi, Segments } = require("celebrate");
 const router = require("express").Router();
 const services = require("../services");
 const jwt = require("../middlewares/jwt");
+const clock = require("../../../helpers/clock");
 
 router.post(
   "/campaign/edit/:opcode",
@@ -129,7 +130,12 @@ router.post(
       if (filter && filter.status) {
         const { status } = filter
         delete filter.status
-        const currentTime = Date.now()
+        // The application clock, not the system clock. Sale windows are
+        // compared against this, and in a seeded environment the chain and
+        // the web app are pinned to a fixed instant - reading Date.now()
+        // here classified every seeded sale as long finished, so "upcoming"
+        // and "active" always came back empty.
+        const currentTime = clock.now()
         switch (status) {
           case "upcoming":
             filter.status = "0"
