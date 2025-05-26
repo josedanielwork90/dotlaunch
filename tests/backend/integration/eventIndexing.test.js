@@ -214,4 +214,141 @@ describe("event indexing", () => {
     });
   });
 
+  describe("launchpadRaisedChanged", () => {
+    const raisedEvent = (overrides = {}) => ({
+      launchpad: LAUNCHPAD,
+      totalRaised: "12000000000000000",
+      totalNeedToRaised: "12000000000000000",
+      ...overrides,
+    });
+
+    /** Parameters must land first: the raised handler keys off tokenSale. */
+    const indexWithParameters = async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_CREATED, [createdEvent()]);
+    };
+
+    it("records the raised total", async () => {
+      await indexWithParameters();
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_RAISED_CHANGED, [raisedEvent()]);
+
+      const stored = await find();
+      expect(stored.totalRaised).toBe("12000000000000000");
+    });
+
+    it("overwrites rather than accumulating, because the event carries a total", async () => {
+      await indexWithParameters();
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_RAISED_CHANGED, [raisedEvent()]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_RAISED_CHANGED, [
+        raisedEvent({ totalRaised: "30000000000000000" }),
+      ]);
+
+      const stored = await find();
+      expect(stored.totalRaised).toBe("30000000000000000");
+    });
+
+    /**
+     * The event parameter is `newNeedToRaised`. Reading it under the wrong
+     * name stored the literal string "undefined" against every presale.
+     */
+    it("stores the amount still needed as a number-like string", async () => {
+      await indexWithParameters();
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_RAISED_CHANGED, [raisedEvent()]);
+
+      const stored = await find();
+      expect(stored.totalNeedToRaised).not.toBe("undefined");
+      expect(stored.totalNeedToRaised).toMatch(/^\d+$/);
+    });
+
+    it("ignores a raised update for an unknown presale", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_RAISED_CHANGED, [
+        raisedEvent({ launchpad: UNKNOWN }),
+      ]);
+
+      expect(await find(UNKNOWN)).toBeNull();
+    });
+  });
+
+  describe("launchpadStateChanged", () => {
+    it("moves an open presale to finished", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_CREATED, [createdEvent()]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_STATE_CHANGED, [
+        {
+          launchpad: LAUNCHPAD,
+          status: LAUNCHPAD_ONCHAIN_STATUS.FINISHED,
+          transactionHash: "0xhash4",
+        },
+      ]);
+
+      const stored = await find();
+      expect(String(stored.status)).toBe(
+        String(LAUNCHPAD_ONCHAIN_STATUS.FINISHED)
+      );
+    });
+
+    it("moves an open presale to cancelled", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_CREATED, [createdEvent()]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_STATE_CHANGED, [
+        {
+          launchpad: LAUNCHPAD,
+          status: LAUNCHPAD_ONCHAIN_STATUS.CANCELLED,
+          transactionHash: "0xhash5",
+        },
+      ]);
+
+      const stored = await find();
+      expect(String(stored.status)).toBe(
+        String(LAUNCHPAD_ONCHAIN_STATUS.CANCELLED)
+      );
+    });
+
+    it("ignores a state change for an unknown presale", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_STATE_CHANGED, [
+        {
+          launchpad: UNKNOWN,
+          status: LAUNCHPAD_ONCHAIN_STATUS.FINISHED,
+          transactionHash: "0xhash6",
+        },
+      ]);
+
+      expect(await find(UNKNOWN)).toBeNull();
+    });
+  });
+
+  describe("launchpadActionChanged", () => {
+    it("turns the whitelist on with its deadline", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_CREATED, [createdEvent()]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_ACTION_CHANGED, [
+        {
+          launchpad: LAUNCHPAD,
+          usingWhitelist: true,
+          endOfWhitelistTime: 1_749_500_000_000,
+        },
+      ]);
+
+      const stored = await find();
+      expect(stored.usingWhitelist).toBe(true);
+      expect(stored.endOfWhitelistTime).toBe(1_749_500_000_000);
+    });
+
+    it("turns the whitelist back off", async () => {
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_CREATED, [createdEvent()]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_ACTION_CHANGED, [
+        { launchpad: LAUNCHPAD, usingWhitelist: true, endOfWhitelistTime: 1 },
+      ]);
+      await deliver(BSC_EVENT_NAME.LAUNCHPAD_ACTION_CHANGED, [
+        { launchpad: LAUNCHPAD, usingWhitelist: false, endOfWhitelistTime: 0 },
+      ]);
+
+      const stored = await find();
+      expect(stored.usingWhitelist).toBe(false);
+    });
+  });
+
+  describe("dispatch", () => {
+    it("routes each event name to a handler", async () => {
+      for (const name of Object.values(BSC_EVENT_NAME)) {
+        await expect(deliver(name, [])).resolves.not.toBeUndefined();
+      }
+    });
+  });
 });
