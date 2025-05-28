@@ -197,3 +197,134 @@ describe("authentication", () => {
     expect(response.status).toBe(400);
   });
 });
+
+describe("campaign routes", () => {
+  const wallet = Wallet.createRandom();
+  let token;
+
+  beforeAll(async () => {
+    const nonce = "campaign-suite-nonce";
+    const signature = await wallet.signMessage(nonce);
+    const response = await request(app).post("/api/v1/auth/sign-in").send({
+      address: wallet.address,
+      nonce,
+      signature,
+      network: "localhost",
+    });
+    token = response.body.token;
+  });
+
+  it("requires authentication to create a campaign", async () => {
+    const response = await request(app)
+      .post("/api/v1/launchpads/campaign/create")
+      .send({ description: "No token supplied" });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a forged bearer token", async () => {
+    const response = await request(app)
+      .post("/api/v1/launchpads/campaign/create")
+      .set("Authorization", "Bearer not-a-real-token")
+      .send({ description: "Forged" });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("creates a campaign and serves it back by opcode", async () => {
+    const payload = {
+      description: "A demo presale for integration testing",
+      website: "https://example.test",
+      twitter: "https://twitter.com/example",
+    };
+
+    const created = await request(app)
+      .post("/api/v1/launchpads/campaign/create")
+      .set("Authorization", `Bearer ${token}`)
+      .send(payload);
+
+    expect(created.status).toBe(200);
+    expect(created.body.opcode).toBeTruthy();
+
+    const fetched = await request(app).get(
+      `/api/v1/launchpads/campaign/get/${created.body.opcode}`
+    );
+
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.campaignData.description).toBe(payload.description);
+    // Ownership is taken from the verified token, never from the body.
+    expect(fetched.body.campaignData.owner.toLowerCase()).toBe(
+      wallet.address.toLowerCase()
+    );
+  });
+
+  it("returns an empty campaign for an unknown opcode", async () => {
+    const response = await request(app).get(
+      "/api/v1/launchpads/campaign/get/DOESNOTEXIST"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.campaignData).toEqual({});
+  });
+
+  /**
+   * A campaign may only be edited by the address that created it - otherwise
+   * anyone could rewrite another project's description after launch.
+   */
+  it("refuses an edit from a different account", async () => {
+    const created = await request(app)
+      .post("/api/v1/launchpads/campaign/create")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ description: "Original description" });
+
+    const attacker = Wallet.createRandom();
+    const nonce = "attacker-nonce";
+    const signature = await attacker.signMessage(nonce);
+    const signIn = await request(app).post("/api/v1/auth/sign-in").send({
+      address: attacker.address,
+      nonce,
+      signature,
+      network: "localhost",
+    });
+
+    const response = await request(app)
+      .post(`/api/v1/launchpads/campaign/edit/${created.body.opcode}`)
+      .set("Authorization", `Bearer ${signIn.body.token}`)
+      .send({ description: "Hijacked" });
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+
+    const fetched = await request(app).get(
+      `/api/v1/launchpads/campaign/get/${created.body.opcode}`
+    );
+    expect(fetched.body.campaignData.description).toBe("Original description");
+  });
+});
+
+describe("launchpad listing", () => {
+  it("returns a paginated envelope", async () => {
+    const response = await request(app)
+      .post("/api/v1/launchpads/list")
+      .send({ page: 1, size: 5 });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty("launchpads");
+    expect(Array.isArray(response.body.launchpads)).toBe(true);
+    expect(response.body).toHaveProperty("totalItems");
+  });
+
+  it("honours the requested page size", async () => {
+    const response = await request(app)
+      .post("/api/v1/launchpads/list")
+      .send({ page: 1, size: 2 });
+
+    expect(response.body.launchpads.length).toBeLessThanOrEqual(2);
+  });
+});
+
+describe("unknown routes", () => {
+  it("404s rather than hanging", async () => {
+    const response = await request(app).get("/api/v1/no-such-route");
+    expect(response.status).toBe(404);
+  });
+});
