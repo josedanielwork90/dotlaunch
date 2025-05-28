@@ -122,3 +122,127 @@ describe("BigNumber conversion", () => {
     expect(getTokenNumberFromBN(supply, 18)).toBe("1000000000.0");
   });
 });
+
+describe("getSaleStatus", () => {
+  beforeEach(() => freezeClock(FIXED_NOW));
+
+  it("reports a sale whose window contains now as active", () => {
+    expect(getSaleStatus(pool() as any)).toBe(3);
+  });
+
+  it("reports a sale that has not opened yet as upcoming", () => {
+    expect(
+      getSaleStatus(pool({ startDate: NOW + DAY, endDate: NOW + 2 * DAY }) as any)
+    ).toBe(0);
+  });
+
+  it("reports a closed sale that reached its soft cap as ended", () => {
+    expect(
+      getSaleStatus(
+        pool({
+          startDate: NOW - 3 * DAY,
+          endDate: NOW - DAY,
+          softCap: "100",
+          totalDeposits: "150",
+        }) as any
+      )
+    ).toBe(4);
+  });
+
+  it("reports a closed sale that missed its soft cap as failed", () => {
+    expect(
+      getSaleStatus(
+        pool({
+          startDate: NOW - 3 * DAY,
+          endDate: NOW - DAY,
+          softCap: "100",
+          totalDeposits: "40",
+        }) as any
+      )
+    ).toBe(5);
+  });
+
+  it("treats exactly meeting the soft cap as a success", () => {
+    expect(
+      getSaleStatus(
+        pool({
+          startDate: NOW - 3 * DAY,
+          endDate: NOW - DAY,
+          softCap: "100",
+          totalDeposits: "100",
+        }) as any
+      )
+    ).toBe(4);
+  });
+
+  it("passes an explicitly finished sale straight through", () => {
+    expect(getSaleStatus(pool({ status: 1 }) as any)).toBe(1);
+  });
+
+  it("passes a cancelled sale straight through", () => {
+    expect(getSaleStatus(pool({ status: 2 }) as any)).toBe(2);
+  });
+
+  it("counts a sale opening exactly now as active", () => {
+    expect(getSaleStatus(pool({ startDate: NOW, endDate: NOW + DAY }) as any)).toBe(3);
+  });
+
+  it("counts a sale closing exactly now as still active", () => {
+    expect(getSaleStatus(pool({ startDate: NOW - DAY, endDate: NOW }) as any)).toBe(3);
+  });
+
+  /**
+   * The regression this whole clock indirection exists for: with the system
+   * clock, every sale seeded around the fixed instant reads as long closed.
+   */
+  it("derives state from the pinned instant, not the system clock", () => {
+    freezeClock("2020-01-01T00:00:00Z");
+    expect(getSaleStatus(pool() as any)).toBe(0);
+
+    freezeClock(FIXED_NOW);
+    expect(getSaleStatus(pool() as any)).toBe(3);
+  });
+
+  it("falls back to the system clock when nothing is pinned", () => {
+    freezeClock(null);
+    const live = pool({ startDate: Date.now() - DAY, endDate: Date.now() + DAY });
+    expect(getSaleStatus(live as any)).toBe(3);
+  });
+});
+
+describe("getValidYoutubeLink", () => {
+  it("rewrites a watch URL into an embed URL", () => {
+    expect(getValidYoutubeLink("https://www.youtube.com/watch?v=abc123")).toBe(
+      "https://www.youtube.com/embed/abc123"
+    );
+  });
+
+  it("leaves an already-embeddable URL alone", () => {
+    const embed = "https://www.youtube.com/embed/abc123";
+    expect(getValidYoutubeLink(embed)).toBe(embed);
+  });
+
+  it("leaves an unrelated URL alone", () => {
+    expect(getValidYoutubeLink("https://example.invalid/video")).toBe(
+      "https://example.invalid/video"
+    );
+  });
+});
+
+describe("makeString", () => {
+  it("returns a string of the requested length", () => {
+    expect(makeString(16)).toHaveLength(16);
+  });
+
+  it("returns an empty string for a length of zero", () => {
+    expect(makeString(0)).toBe("");
+  });
+
+  it("uses only alphanumeric characters", () => {
+    expect(makeString(64)).toMatch(/^[A-Za-z0-9]+$/);
+  });
+
+  it("does not repeat itself between calls", () => {
+    expect(makeString(32)).not.toBe(makeString(32));
+  });
+});
