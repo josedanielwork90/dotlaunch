@@ -108,3 +108,84 @@ describe("metadataUrl", () => {
     expect(metadataUrl(CID)).toBe(`http://localhost:8888/api/v1/storage/${CID}`);
   });
 });
+
+describe("uploadMetadata", () => {
+  it("posts the document to the API storage endpoint", async () => {
+    mockPost.mockResolvedValue({ data: { cid: CID, url: `/storage/${CID}` } });
+
+    await uploadMetadata({ name: "Nova", description: "A presale" }, "nova");
+
+    expect(mockPost).toHaveBeenCalledWith("/storage", {
+      content: { name: "Nova", description: "A presale" },
+      name: "nova",
+    });
+  });
+
+  it("returns the stored content reference", async () => {
+    mockPost.mockResolvedValue({ data: { cid: CID, url: `/storage/${CID}` } });
+
+    const stored = await uploadMetadata({ name: "Nova" });
+
+    expect(stored.cid).toBe(CID);
+    expect(stored.url).toBe(`/storage/${CID}`);
+  });
+
+  it("sends an undefined name when none is given", async () => {
+    mockPost.mockResolvedValue({ data: { cid: CID, url: "" } });
+
+    await uploadMetadata({ name: "Nova" });
+
+    expect(mockPost).toHaveBeenCalledWith("/storage", {
+      content: { name: "Nova" },
+      name: undefined,
+    });
+  });
+
+  /** A failed upload must surface: the caller cannot mint a URI without one. */
+  it("propagates a failure rather than returning a broken reference", async () => {
+    mockPost.mockRejectedValue(new Error("storage unavailable"));
+
+    await expect(uploadMetadata({ name: "Nova" })).rejects.toThrow(
+      "storage unavailable"
+    );
+  });
+});
+
+describe("fetchMetadata", () => {
+  it("resolves a bare content id", async () => {
+    mockGet.mockResolvedValue({ data: { name: "Nova" } });
+
+    const document = await fetchMetadata(CID);
+
+    expect(mockGet).toHaveBeenCalledWith(`/storage/${CID}`);
+    expect(document).toEqual({ name: "Nova" });
+  });
+
+  it("resolves a full gateway URL by its trailing segment", async () => {
+    mockGet.mockResolvedValue({ data: { name: "Nova" } });
+
+    await fetchMetadata(`https://gateway.pinata.cloud/ipfs/${CID}`);
+
+    expect(mockGet).toHaveBeenCalledWith(`/storage/${CID}`);
+  });
+
+  /**
+   * A presale whose metadata has gone missing still has to render from its
+   * on-chain fields, so this returns null instead of throwing.
+   */
+  it("returns null when the document cannot be fetched", async () => {
+    mockGet.mockRejectedValue(new Error("404"));
+
+    await expect(fetchMetadata(CID)).resolves.toBeNull();
+  });
+
+  it("returns null for an empty URI without calling the API", async () => {
+    await expect(fetchMetadata("")).resolves.toBeNull();
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it("returns null for a URI with no usable segment", async () => {
+    await expect(fetchMetadata("///")).resolves.toBeNull();
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+});

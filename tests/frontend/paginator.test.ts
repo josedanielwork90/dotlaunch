@@ -102,4 +102,92 @@ describe("Paginator", () => {
     });
   });
 
+  describe("clamping", () => {
+    it("clamps a page below one back to the first page", () => {
+      expect(new Paginator(10, 5).build(100, -3).currentPage).toBe(1);
+    });
+
+    it("clamps a page past the end back to the last page", () => {
+      expect(new Paginator(10, 5).build(100, 9999).currentPage).toBe(10);
+    });
+
+    it("treats a missing page as page one", () => {
+      expect(new Paginator(10, 5).build(100, undefined as any).currentPage).toBe(1);
+    });
+
+    it("accepts numeric strings for both arguments", () => {
+      const build = new Paginator(10, 5).build("100" as any, "3" as any);
+      expect(build.currentPage).toBe(3);
+      expect(build.totalPages).toBe(10);
+    });
+  });
+
+  describe("an empty result set", () => {
+    const build = new Paginator(10, 5).build(0, 1);
+
+    it("reports no pages", () => {
+      expect(build.totalPages).toBe(0);
+    });
+
+    it("never reports a negative result index", () => {
+      expect(build.firstResult).toBeGreaterThanOrEqual(0);
+      expect(build.lastResult).toBeGreaterThanOrEqual(0);
+    });
+
+    it("offers no navigation", () => {
+      expect(build.hasNextPage).toBe(false);
+      expect(build.hasPreviousPage).toBe(false);
+    });
+
+    it("renders no page links", () => {
+      expect(build.pages).toBeLessThanOrEqual(0);
+    });
+  });
+
+  describe("fewer pages than the window", () => {
+    const build = new Paginator(10, 10).build(25, 1);
+
+    it("never renders more links than there are pages", () => {
+      expect(build.pages).toBe(3);
+    });
+
+    it("keeps the window inside the real page range", () => {
+      expect(build.firstPage).toBeGreaterThanOrEqual(1);
+      expect(build.lastPage).toBeLessThanOrEqual(build.totalPages);
+    });
+  });
+
+  describe("a single full page", () => {
+    const build = new Paginator(6, 5).build(6, 1);
+
+    it("reports one page", () => {
+      expect(build.totalPages).toBe(1);
+    });
+
+    it("covers every result", () => {
+      expect(build.firstResult).toBe(0);
+      expect(build.lastResult).toBe(5);
+      expect(build.results).toBe(6);
+    });
+  });
+
+  describe("page-size behaviour matching the API default", () => {
+    /** DEFAULT_PAGINATION_SETTING.SIZE on the API is 6. */
+    const paginator = new Paginator(6, 5);
+
+    it("splits 20 results into four pages", () => {
+      expect(paginator.build(20, 1).totalPages).toBe(4);
+    });
+
+    it("puts results 6..11 on page two", () => {
+      const build = paginator.build(20, 2);
+      expect(build.firstResult).toBe(6);
+      expect(build.lastResult).toBe(11);
+    });
+
+    it("leaves two results on the final page", () => {
+      const build = paginator.build(20, 4);
+      expect(build.results).toBe(2);
+    });
+  });
 });
