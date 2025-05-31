@@ -78,3 +78,55 @@ describe("errorMessage", () => {
     expect(errorMessage({ message: "" }, "fallback")).toBe("fallback");
   });
 });
+
+describe("isUserRejection", () => {
+  /**
+   * Dismissing a wallet prompt is a choice, not a failure, and must not be
+   * reported to the user as an error.
+   */
+  it("recognises the EIP-1193 rejection code", () => {
+    expect(isUserRejection({ code: USER_REJECTED_CODE })).toBe(true);
+  });
+
+  it("recognises the code on a nested error", () => {
+    expect(isUserRejection({ error: { code: USER_REJECTED_CODE } })).toBe(true);
+  });
+
+  it.each([
+    "User rejected the request",
+    "MetaMask Tx Signature: User denied transaction signature",
+  ])("recognises %p by message", (message) => {
+    expect(isUserRejection(new Error(message))).toBe(true);
+  });
+
+  it("does not mistake a real failure for a rejection", () => {
+    expect(isUserRejection(new Error("insufficient funds"))).toBe(false);
+    expect(isUserRejection(null)).toBe(false);
+  });
+});
+
+describe("isUnrecognisedChain", () => {
+  it("recognises the unknown-chain code", () => {
+    expect(isUnrecognisedChain({ code: UNRECOGNISED_CHAIN_CODE })).toBe(true);
+    expect(isUnrecognisedChain({ error: { code: UNRECOGNISED_CHAIN_CODE } })).toBe(
+      true
+    );
+  });
+
+  it("returns false for anything else", () => {
+    expect(isUnrecognisedChain({ code: 4001 })).toBe(false);
+    expect(isUnrecognisedChain(null)).toBe(false);
+  });
+});
+
+describe("toastableError", () => {
+  it("stays silent for a user rejection", () => {
+    expect(toastableError({ code: USER_REJECTED_CODE })).toBe("");
+  });
+
+  it("reports a real failure", () => {
+    expect(
+      toastableError(new Error("execution reverted: revert: Hardcap reached"))
+    ).toBe("Hardcap reached");
+  });
+});
