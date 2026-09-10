@@ -282,10 +282,23 @@ Third-party code vendored into the tree is recorded in
 
 ## Screenshots
 
-In [`docs/screenshots/`](docs/screenshots/) — the catalogue and each status
-filter, presale detail pages for live, filled, whitelisted, upcoming,
-finalised and cancelled sales, the creation wizards, token and lock
-management, multisend, the demo wallet account picker, and mobile viewports.
+44 PNGs in [`docs/screenshots/`](docs/screenshots/), indexed in
+[its README](docs/screenshots/README.md):
+
+- **Pages** — landing, catalogue, dashboard, both creation wizards, token and
+  lock management, multisend, 404
+- **Presale states** — live, at hard cap, whitelist-gated, upcoming,
+  finalised, cancelled, each a different seeded sale
+- **Filters** — upcoming, active, success, failed
+- **Transient states** — loading skeletons, empty list, unreachable API,
+  validation errors
+- **Interaction** — hover, focus, wallet menu, demo account picker
+- **Components** — presale card, filter bar, tabs, toolbar, sale terms,
+  cropped to their own bounds
+- **Responsive** — four mobile viewports at 390×844
+
+Every number on screen is real contract state from the seeded environment,
+and the pinned clock makes them reproducible on any machine.
 
 ![Presale catalogue](docs/screenshots/02-launchpad-list.png)
 
