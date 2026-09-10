@@ -35,7 +35,7 @@ services:
       # chain only advances when something actually happens, so a seeded
       # environment stays reproducible for as long as it is left running.
       # Genesis is pinned 45 days before the instant the web app treats as
-      # "now" (FIXED_NOW in .env.docker). The seeder replays that history —
+      # "now" (FIXED_NOW below). The seeder replays that history —
       # running and closing the past sales at their real times — and parks
       # the clock exactly on FIXED_NOW when it finishes, so on-chain state
       # and the rendered countdowns agree.
@@ -117,13 +117,31 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: dotlaunch-api
-    env_file:
-      - .env.docker
+    # Every value is declared here with a default rather than loaded from a
+    # committed env file, so the stack needs no --env-file flag and the
+    # repository carries no .env of any kind. Override any of them from your
+    # own shell or a local .env (which is git-ignored).
     environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "8888"
       MONGO_URL: mongodb://mongo:27017/dotlaunch
       REDIS_URL: redis://redis:6379
       CHAIN_RPC_URL: http://anvil:8545
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      CHAIN_NAME: ${CHAIN_NAME:-Localhost}
+      CHAIN_CONFIRMATIONS: ${CHAIN_CONFIRMATIONS:-0}
+      # Local development signing secret. Generate a real one for any
+      # deployed environment; the API refuses to boot in production without
+      # an explicit JWT_SECRET.
+      JWT_SECRET: ${JWT_SECRET:-dotlaunch-local-development-secret}
+      JWT_TTL: ${JWT_TTL:-126000}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       STORAGE_LOCAL_DIR: /app/.storage
+      STORAGE_PUBLIC_BASE_URL: http://localhost:${API_PORT:-8888}/api/v1/storage
+      EVENT_LISTENER_ENABLED: ${EVENT_LISTENER_ENABLED:-true}
+      EVENT_LISTENER_BLOCK_RANGE: ${EVENT_LISTENER_BLOCK_RANGE:-1000}
+      EVENT_LISTENER_CRON: ${EVENT_LISTENER_CRON:-*/5 * * * * *}
+      FIXED_NOW: ${FIXED_NOW:-2025-06-15T12:00:00Z}
     ports:
       - "${API_PORT:-8888}:8888"
     volumes:
@@ -154,12 +172,24 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: dotlaunch-web
-    env_file:
-      - .env.docker
     environment:
       # Browser-facing URLs, so these are host addresses, not service names.
       API_BASE_URL: http://localhost:${API_PORT:-8888}/api/v1
       CHAIN_RPC_URL: http://localhost:${ANVIL_PORT:-8545}
+      CHAIN_ID: ${CHAIN_ID:-31337}
+      CHAIN_NAME: ${CHAIN_NAME:-Localhost}
+      EXPLORER_URL: ${EXPLORER_URL:-http://localhost:8545}
+      NATIVE_SYMBOL: ${NATIVE_SYMBOL:-ETH}
+      STORAGE_PUBLIC_BASE_URL: http://localhost:${API_PORT:-8888}/api/v1/storage
+      CONTRACT_LAUNCHPAD_DEPLOYER: ${CONTRACT_LAUNCHPAD_DEPLOYER:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      CONTRACT_TOKEN_LOCK: ${CONTRACT_TOKEN_LOCK:-0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512}
+      CONTRACT_TOKEN_MANAGE: ${CONTRACT_TOKEN_MANAGE:-0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0}
+      CONTRACT_MULTISEND: ${CONTRACT_MULTISEND:-0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9}
+      # Exposes the built-in demo wallet so the app is usable with no browser
+      # extension. Never enable against a live network.
+      DEMO_MODE: ${DEMO_MODE:-true}
+      # Pins the app clock so seeded data renders identically everywhere.
+      FIXED_NOW: ${FIXED_NOW:-2025-06-15T12:00:00Z}
     ports:
       - "${WEB_PORT:-3000}:80"
     depends_on:

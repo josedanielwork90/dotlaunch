@@ -90,10 +90,10 @@ git clone <this-repo>
 cd dotlaunch
 
 # Build and start: anvil, mongo, redis, contract deployment, API, web app.
-docker compose --env-file .env.docker up --build -d
+docker compose up --build -d
 
 # Load the demo environment: tokens, presales in every state, locks.
-docker compose --env-file .env.docker run --rm seed
+docker compose run --rm seed
 ```
 
 Then open **http://localhost:3000**.
@@ -116,11 +116,14 @@ production build dominates), `up` ~40 seconds, `seed` ~60 seconds.
 To reset to a clean slate:
 
 ```bash
-docker compose --env-file .env.docker down -v
+docker compose down -v
 ```
 
-Ports can be overridden — `WEB_PORT`, `API_PORT`, `ANVIL_PORT`, `MONGO_PORT`
-in `.env.docker` — if any collide with something already running.
+Ports can be overridden if any collide with something already running:
+
+```bash
+WEB_PORT=4000 API_PORT=9000 docker compose up -d
+```
 
 ---
 
@@ -174,7 +177,7 @@ All suites live under [`tests/`](tests/), split by package.
 
 ```bash
 # API — unit and integration, against a real MongoDB
-docker compose --env-file .env.docker run --rm test
+docker compose run --rm test
 
 # Contracts
 cd contracts && npm install && npx hardhat test
@@ -229,7 +232,7 @@ automated tooling.
 
 - Contract addresses are fixed. A clean chain, the fixed development mnemonic,
   and a fixed deployment order always produce the same addresses — they are
-  written into `.env.docker` and asserted at deploy time.
+  declared as defaults in `docker-compose.yml` and asserted at deploy time.
 - The chain starts at a pinned genesis and mines on demand rather than on a
   timer, so its clock only advances when something happens.
 - The API and the web app both treat `FIXED_NOW` (`2025-06-15T12:00:00Z`) as
@@ -244,10 +247,11 @@ deployment does.
 
 ## Configuration
 
-Every setting is read from the environment; see [`.env.example`](.env.example)
-for the full list and [`.env.docker`](.env.docker) for the values Compose uses.
-Nothing sensitive is committed — the values in those files are local
-development defaults.
+Every setting is read from the environment. The repository contains **no
+`.env` file of any kind**: `docker-compose.yml` declares each value inline
+with a development default, which is why the commands above need no
+`--env-file` flag. [`docs/configuration.md`](docs/configuration.md) documents
+every variable.
 
 Notable settings:
 

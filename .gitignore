@@ -14,10 +14,10 @@ coverage/
 *.tsbuildinfo
 
 # Environment — never commit real values, only .env.example
+# No .env file of any kind belongs in this repository. Compose declares its
+# own defaults inline; see docs/configuration.md for every variable.
 .env
 .env.*
-!.env.example
-!.env.docker
 
 # Local runtime state
 .storage/

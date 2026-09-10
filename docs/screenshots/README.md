@@ -4,8 +4,8 @@ Captured from the running stack with the demo environment seeded, so every
 number on screen is real contract state rather than a mockup. Reproduce with:
 
 ```bash
-docker compose --env-file .env.docker up -d
-docker compose --env-file .env.docker run --rm seed
+docker compose up -d
+docker compose run --rm seed
 ```
 
 The application clock is pinned to `2025-06-15T12:00:00Z`, so these render
