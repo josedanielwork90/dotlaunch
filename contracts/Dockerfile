@@ -16,7 +16,10 @@ COPY contracts ./contracts
 RUN npx hardhat compile
 
 COPY scripts ./scripts
-COPY test ./test
+
+# Deliberately no test suite here. This image exists to deploy and seed; the
+# suites live in the repository-wide tests/ tree, outside this build context,
+# and are run either on the host or by the `test` compose service.
 
 ENV CHAIN_RPC_URL=http://anvil:8545
 ENV CHAIN_ID=31337
